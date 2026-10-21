@@ -9,7 +9,6 @@ import {
   Sparkles,
   AlertCircle,
   Share2,
-  Code2,
 } from 'lucide-react';
 import { roomApi } from '../../lib/api';
 
@@ -314,7 +313,7 @@ export default function QuickActionCards({ onRoomCreated }) {
                   if (joinError) setJoinError('');
                 }}
                 placeholder="e.g. cs-a8f2-3c9d or https://.../room/cs-a8f2-3c9d"
-                className={`w-full rounded-xl bg-surface-light/60 px-3.5 py-2.5 text-sm text-text font-mono placeholder:font-sans placeholder:text-text-muted/40 border transition-all outline-none ${
+                className={`w-full rounded-xl bg-surface-light/60 px-4 py-3 text-sm text-text font-mono placeholder:font-sans placeholder:text-text-muted/40 border transition-all outline-none ${
                   joinError
                     ? 'border-rose-500/60 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20'
                     : 'border-white/[0.08] focus:border-accent/80 focus:ring-2 focus:ring-accent/20 hover:border-white/[0.14]'

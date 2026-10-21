@@ -9,6 +9,8 @@ import {
   RotateCw,
   AlertCircle,
   Tag,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { roomApi } from '../../lib/api';
 
@@ -22,10 +24,11 @@ const LANGUAGE_BADGES = {
   rust: 'bg-red-400/10 text-red-300 border-red-400/20',
 };
 
-export default function RecentSessions({ refreshKey = 0 }) {
+export default function RecentSessions({ refreshKey = 0, onRoomsLoaded }) {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [copiedId, setCopiedId] = useState(null);
   const navigate = useNavigate();
 
   const fetchRooms = useCallback(async () => {
@@ -33,31 +36,49 @@ export default function RecentSessions({ refreshKey = 0 }) {
       setLoading(true);
       setError('');
       const data = await roomApi.getRooms({ limit: 20 });
-      setRooms(data.rooms || []);
+      const fetchedRooms = data.rooms || [];
+      setRooms(fetchedRooms);
+      if (onRoomsLoaded) {
+        onRoomsLoaded(fetchedRooms);
+      }
     } catch (err) {
       setError(err.message || 'Failed to fetch interview rooms');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onRoomsLoaded]);
 
   useEffect(() => {
     fetchRooms();
   }, [fetchRooms, refreshKey]);
 
+  const handleCopyLink = async (roomId, e) => {
+    e.stopPropagation();
+    const url = `${window.location.origin}/room/${roomId}`;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      }
+      setCopiedId(roomId);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      // Fallback
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-text">Your Interview Rooms</h3>
             <span className="text-[10px] font-medium text-primary-light bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
-              Live Database Records
+              Live Database
             </span>
           </div>
-          <p className="text-xs text-text-muted">
-            Rooms you have created or joined. Access the lobby to invite participants or manage the session.
+          <p className="text-xs text-text-muted mt-0.5">
+            Rooms you have created or joined. Access the lobby to invite candidates or continue collaboration.
           </p>
         </div>
 
@@ -66,10 +87,10 @@ export default function RecentSessions({ refreshKey = 0 }) {
           type="button"
           onClick={fetchRooms}
           disabled={loading}
-          className="self-start sm:self-auto inline-flex items-center gap-1.5 text-xs font-medium text-text-muted hover:text-text border border-white/[0.08] hover:border-white/[0.15] bg-surface-light/40 hover:bg-surface-light px-3 py-1.5 rounded-lg transition disabled:opacity-60"
+          className="self-start sm:self-auto inline-flex items-center gap-1.5 text-xs font-medium text-text-muted hover:text-text border border-white/[0.08] hover:border-white/[0.16] bg-surface-light/40 hover:bg-surface-light px-3 py-1.5 rounded-lg transition disabled:opacity-60 shadow-sm"
         >
           <RotateCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-primary-light' : ''}`} />
-          <span>Refresh</span>
+          <span>Refresh List</span>
         </button>
       </div>
 
@@ -86,23 +107,23 @@ export default function RecentSessions({ refreshKey = 0 }) {
         /* Loading skeleton */
         <div className="rounded-2xl border border-white/[0.08] bg-surface/75 p-6 space-y-4 animate-pulse">
           <div className="h-4 bg-white/[0.06] rounded w-1/3" />
-          <div className="h-10 bg-white/[0.04] rounded" />
-          <div className="h-10 bg-white/[0.04] rounded" />
+          <div className="h-14 bg-white/[0.04] rounded-xl" />
+          <div className="h-14 bg-white/[0.04] rounded-xl" />
         </div>
       ) : rooms.length === 0 ? (
         /* Empty State */
-        <div className="rounded-2xl border border-dashed border-white/[0.1] bg-surface/30 p-10 text-center flex flex-col items-center justify-center space-y-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.04] text-text-muted">
+        <div className="rounded-2xl border border-dashed border-white/[0.1] bg-surface/40 p-10 text-center flex flex-col items-center justify-center space-y-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.04] text-text-muted ring-1 ring-white/[0.06]">
             <FolderOpen className="h-6 w-6" />
           </div>
           <h4 className="text-sm font-semibold text-text">No Interview Rooms Yet</h4>
           <p className="text-xs text-text-muted max-w-sm leading-relaxed">
-            You haven&apos;t created or joined any collaborative sessions yet. Use the card above to spin up a new room in seconds!
+            You have not created or joined any collaborative sessions yet. Use the action card above to spin up a new room in seconds.
           </p>
         </div>
       ) : (
         /* Real Rooms List */
-        <div className="rounded-2xl border border-white/[0.08] bg-surface/75 backdrop-blur-xl overflow-hidden shadow-lg">
+        <div className="rounded-2xl border border-white/[0.08] bg-surface/75 backdrop-blur-xl overflow-hidden shadow-xl">
           <div className="divide-y divide-white/[0.06]">
             {rooms.map((room) => {
               const langBadge =
@@ -110,6 +131,7 @@ export default function RecentSessions({ refreshKey = 0 }) {
                 'bg-white/[0.06] text-text-muted border-white/[0.1]';
 
               const isActive = room.status === 'active';
+              const isCopied = copiedId === room.roomId;
 
               return (
                 <div
@@ -118,7 +140,7 @@ export default function RecentSessions({ refreshKey = 0 }) {
                 >
                   <div className="space-y-1.5 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-sm text-text truncate max-w-md">
+                      <span className="font-semibold text-sm text-text truncate max-w-md">
                         {room.title}
                       </span>
 
@@ -127,15 +149,19 @@ export default function RecentSessions({ refreshKey = 0 }) {
                         className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ${
                           isActive
                             ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20'
-                            : 'bg-white/[0.06] text-text-muted border-white/[0.1]'
+                            : 'bg-white/[0.04] text-text-muted/80 border-white/[0.08]'
                         }`}
                       >
-                        {isActive && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                        {isActive && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        )}
                         {isActive ? 'Active' : 'Ended'}
                       </span>
 
                       {/* Language badge */}
-                      <span className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded-full border capitalize ${langBadge}`}>
+                      <span
+                        className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded-full border capitalize ${langBadge}`}
+                      >
                         {room.language}
                       </span>
 
@@ -155,18 +181,25 @@ export default function RecentSessions({ refreshKey = 0 }) {
 
                       <span className="flex items-center gap-1.5">
                         <Users className="h-3.5 w-3.5 text-text-muted/60" />
-                        {room.participantCount || 1} participant{(room.participantCount || 1) > 1 ? 's' : ''}
+                        {room.participantCount || 1} participant
+                        {(room.participantCount || 1) > 1 ? 's' : ''}
                       </span>
 
                       <span className="flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 text-text-muted/60" />
-                        {room.createdAt ? new Date(room.createdAt).toLocaleDateString() : 'Recent'}
+                        {room.createdAt
+                          ? new Date(room.createdAt).toLocaleDateString(undefined, {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })
+                          : 'Recent'}
                       </span>
 
                       {room.creator?.name && (
                         <span className="flex items-center gap-1.5 text-text-muted/70">
                           <Tag className="h-3 w-3" />
-                          Creator: {room.creator.name}
+                          Host: {room.creator.name}
                         </span>
                       )}
                     </div>
@@ -176,10 +209,33 @@ export default function RecentSessions({ refreshKey = 0 }) {
                   <div className="flex items-center gap-2 sm:self-center shrink-0">
                     <button
                       type="button"
-                      onClick={() => navigate(`/room/${room.roomId}`)}
-                      className="inline-flex items-center gap-1.5 text-xs font-medium text-text bg-primary/15 hover:bg-primary/25 border border-primary/30 px-3.5 py-1.5 rounded-lg transition"
+                      onClick={(e) => handleCopyLink(room.roomId, e)}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-text-muted hover:text-text border border-white/[0.08] hover:border-white/[0.16] bg-surface-light/40 hover:bg-surface-light px-2.5 py-1.5 rounded-lg transition"
+                      title="Copy Room Invitation Link"
                     >
-                      <span>Enter Lobby</span>
+                      {isCopied ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-400" />
+                          <span className="text-emerald-400 text-[11px]">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline text-[11px]">Copy Link</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/room/${room.roomId}`)}
+                      className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-lg shadow-sm transition ${
+                        isActive
+                          ? 'bg-primary hover:bg-primary-dark text-white shadow-primary/25'
+                          : 'bg-white/[0.06] hover:bg-white/[0.1] text-text border border-white/[0.08]'
+                      }`}
+                    >
+                      <span>{isActive ? 'Enter Room' : 'View Session'}</span>
                       <ArrowUpRight className="h-3.5 w-3.5" />
                     </button>
                   </div>

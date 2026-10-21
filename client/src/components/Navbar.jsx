@@ -117,7 +117,7 @@ export default function Navbar() {
               onClick={() => setMobileOpen(false)}
               className="block rounded-lg px-4 py-2 text-xs font-semibold text-accent bg-accent/10 border border-accent/20 text-center"
             >
-              Workspace (Demo)
+              Workspace
             </Link>
             <Link
               to="/login"

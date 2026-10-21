@@ -84,7 +84,7 @@ export async function apiFetch(endpoint, options = {}) {
   let res;
   try {
     res = await fetch(url, config);
-  } catch (netErr) {
+  } catch {
     throw new Error('Unable to connect to CodeSync Hub API. Please check if the server is running.');
   }
 

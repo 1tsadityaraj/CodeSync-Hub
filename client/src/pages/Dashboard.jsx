@@ -10,6 +10,7 @@ import GettingStartedGuide from '../components/dashboard/GettingStartedGuide';
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [rooms, setRooms] = useState([]);
   const { user } = useAuth();
 
   const handleRoomCreated = () => {
@@ -21,26 +22,26 @@ export default function Dashboard() {
       {activeTab === 'overview' && (
         <div className="space-y-8 animate-fadeIn">
           {/* Welcome Banner */}
-          <div className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-r from-surface via-surface-light/40 to-surface p-6 sm:p-8 backdrop-blur-xl overflow-hidden shadow-xl">
+          <div className="relative rounded-2xl border border-white/[0.08] bg-surface/75 p-6 sm:p-8 backdrop-blur-xl overflow-hidden shadow-xl">
             {/* Ambient lighting glow */}
-            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/[0.1] blur-3xl" />
-            <div className="pointer-events-none absolute -left-20 -bottom-20 h-64 w-64 rounded-full bg-accent/[0.05] blur-3xl" />
+            <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/[0.08] blur-3xl" />
+            <div className="pointer-events-none absolute -left-20 -bottom-20 h-64 w-64 rounded-full bg-accent/[0.04] blur-3xl" />
 
             <div className="relative z-10 max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/[0.08] px-3.5 py-1 text-xs font-medium text-primary-light mb-4">
-                <Sparkles className="h-3 w-3" />
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/[0.08] px-3.5 py-1 text-xs font-semibold text-primary-light mb-3">
+                <Sparkles className="h-3.5 w-3.5" />
                 Live Collaborative Platform
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
                 Welcome back,{' '}
-                <span className="bg-gradient-to-r from-primary via-primary-light to-accent bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-primary-light via-indigo-300 to-accent bg-clip-text text-transparent">
                   {user?.name ? user.name.split(' ')[0] : 'Developer'}!
                 </span>
               </h1>
 
               <p className="mt-2 text-sm text-text-muted leading-relaxed">
-                Create an interview room or join your team to start collaborating in real time with audio, video, and code execution.
+                Create an interview room or join your team to start collaborating in real time with code synchronization, interactive whiteboard, and video calling.
               </p>
             </div>
           </div>
@@ -48,14 +49,14 @@ export default function Dashboard() {
           {/* Quick Action Cards (Create Room & Join Room) */}
           <QuickActionCards onRoomCreated={handleRoomCreated} />
 
-          {/* Stats Cards */}
-          <StatsCards />
+          {/* Real Dynamic Stats Cards */}
+          <StatsCards rooms={rooms} />
 
           {/* Getting Started Guide */}
           <GettingStartedGuide />
 
           {/* Real Rooms / Recent Sessions */}
-          <RecentSessions refreshKey={refreshKey} />
+          <RecentSessions refreshKey={refreshKey} onRoomsLoaded={setRooms} />
         </div>
       )}
 

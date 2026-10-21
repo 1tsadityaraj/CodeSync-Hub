@@ -9,6 +9,8 @@ const FOOTER_LINKS = [
   { label: 'Get Started', href: '/signup', isAnchor: false },
 ];
 
+const currentYear = new Date().getFullYear();
+
 export default function Footer() {
   const handleAnchor = (e, href) => {
     e.preventDefault();
@@ -16,7 +18,7 @@ export default function Footer() {
   };
 
   return (
-    <footer id="about" className="border-t border-white/[0.04] scroll-mt-20">
+    <footer id="about" className="border-t border-white/[0.08] bg-[#070a12] scroll-mt-20">
       <div className="mx-auto max-w-7xl px-6 py-12">
         <div className="flex flex-col items-center gap-8 sm:flex-row sm:justify-between">
           {/* Brand */}
@@ -38,7 +40,7 @@ export default function Footer() {
                   key={label}
                   href={href}
                   onClick={(e) => handleAnchor(e, href)}
-                  className="text-sm text-text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-sm"
+                  className="text-xs sm:text-sm font-medium text-text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-sm"
                 >
                   {label}
                 </a>
@@ -46,7 +48,7 @@ export default function Footer() {
                 <Link
                   key={label}
                   to={href}
-                  className="text-sm text-text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-sm"
+                  className="text-xs sm:text-sm font-medium text-text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded-sm"
                 >
                   {label}
                 </Link>
@@ -56,10 +58,17 @@ export default function Footer() {
         </div>
 
         {/* Copyright */}
-        <div className="mt-8 border-t border-white/[0.04] pt-6 text-center">
-          <p className="text-xs text-text-muted/50">
-            © {new Date().getFullYear()} CodeSync Hub. All rights reserved.
+        <div className="mt-8 border-t border-white/[0.06] pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+          <p className="text-xs text-text-muted/60 font-mono">
+            © {currentYear} CodeSync Hub. High-performance collaborative interviews.
           </p>
+          <div className="flex items-center gap-4 text-xs text-text-muted/60">
+            <span>Yjs CRDT</span>
+            <span>•</span>
+            <span>WebRTC Media</span>
+            <span>•</span>
+            <span>Monaco IDE</span>
+          </div>
         </div>
       </div>
     </footer>

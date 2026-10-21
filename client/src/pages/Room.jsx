@@ -196,7 +196,34 @@ export default function Room() {
     URL.revokeObjectURL(url);
   };
 
-  const handleEditorDidMount = (editor) => {
+  const handleEditorDidMount = (editor, monaco) => {
+    if (monaco) {
+      monaco.editor.defineTheme('codesync-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: 'comment', foreground: '64748b', fontStyle: 'italic' },
+          { token: 'keyword', foreground: '818cf8', fontStyle: 'bold' },
+          { token: 'identifier', foreground: 'f1f5f9' },
+          { token: 'string', foreground: '34d399' },
+          { token: 'number', foreground: 'fbbf24' },
+          { token: 'delimiter', foreground: '94a3b8' },
+          { token: 'type', foreground: '38bdf8' },
+        ],
+        colors: {
+          'editor.background': '#0a0e17',
+          'editor.foreground': '#f1f5f9',
+          'editorLineNumber.foreground': '#334155',
+          'editorLineNumber.activeForeground': '#818cf8',
+          'editorCursor.foreground': '#818cf8',
+          'editor.selectionBackground': '#223254',
+          'editor.inactiveSelectionBackground': '#18243c',
+          'editor.lineHighlightBackground': '#0e1422',
+          'editorGutter.background': '#0a0e17',
+        },
+      });
+      monaco.editor.setTheme('codesync-dark');
+    }
     bindEditor(editor);
   };
 
@@ -638,21 +665,21 @@ export default function Room() {
       </div>
 
       {/* ── Main Workspace Body: Monaco + Whiteboard + Optional Sidebar ────── */}
-      <div className="flex-1 flex min-h-0 relative overflow-hidden bg-[#1e1e1e]">
+      <div className="flex-1 flex min-h-0 relative overflow-hidden bg-[#0a0e17]">
         {/* Monaco Editor Container */}
         <div
           className={`h-full relative transition-all duration-200 ${
             viewMode === 'code'
               ? 'flex-1 min-w-0'
               : viewMode === 'split'
-              ? 'flex-1 min-w-0 border-r border-white/[0.08]'
+              ? 'flex-1 min-w-[340px] border-r border-white/[0.08]'
               : 'hidden'
           }`}
         >
           <Editor
             height="100%"
             width="100%"
-            theme="vs-dark"
+            theme="codesync-dark"
             language={language}
             options={{
               readOnly: !isActive,
@@ -675,7 +702,7 @@ export default function Room() {
               renderWhitespace: 'selection',
             }}
             loading={
-              <div className="h-full w-full bg-[#1e1e1e] flex flex-col items-center justify-center space-y-3">
+              <div className="h-full w-full bg-[#0a0e17] flex flex-col items-center justify-center space-y-3">
                 <svg className="h-6 w-6 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />

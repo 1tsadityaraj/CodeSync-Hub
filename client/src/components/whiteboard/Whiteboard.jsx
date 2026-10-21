@@ -652,16 +652,28 @@ export default function Whiteboard({
         </div>
 
         {/* Center: Color & Stroke Selectors */}
-        <div className="hidden xl:flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Colors */}
-          <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/40 border border-white/[0.06]">
-            {COLORS.map((c) => (
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/60 border border-white/[0.08]">
+            {COLORS.slice(0, 5).map((c) => (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => setActiveColor(c.id)}
                 style={{ backgroundColor: c.id }}
-                className={`h-4 w-4 rounded-full transition transform hover:scale-110 ${
+                className={`h-3.5 w-3.5 sm:h-4 sm:w-4 rounded-full transition transform hover:scale-110 ${
+                  activeColor === c.id ? 'ring-2 ring-white ring-offset-1 ring-offset-bg scale-110' : ''
+                }`}
+                title={c.label}
+              />
+            ))}
+            {COLORS.slice(5).map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setActiveColor(c.id)}
+                style={{ backgroundColor: c.id }}
+                className={`hidden md:inline-block h-3.5 w-3.5 sm:h-4 sm:w-4 rounded-full transition transform hover:scale-110 ${
                   activeColor === c.id ? 'ring-2 ring-white ring-offset-1 ring-offset-bg scale-110' : ''
                 }`}
                 title={c.label}
@@ -670,7 +682,7 @@ export default function Whiteboard({
           </div>
 
           {/* Stroke Widths */}
-          <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/40 border border-white/[0.06]">
+          <div className="hidden sm:flex items-center gap-0.5 p-1 rounded-lg bg-surface-light/60 border border-white/[0.08]">
             {STROKE_WIDTHS.map((sw) => (
               <button
                 key={sw.id}
