@@ -70,7 +70,7 @@ export default function Navbar() {
             Log in
           </Link>
           <Link
-            to="/get-started"
+            to="/signup"
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary/20 transition hover:bg-primary-dark hover:shadow-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           >
             Get Started
@@ -114,7 +114,7 @@ export default function Navbar() {
               Log in
             </Link>
             <Link
-              to="/get-started"
+              to="/signup"
               onClick={() => setMobileOpen(false)}
               className="block rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white text-center shadow-md shadow-primary/20 transition hover:bg-primary-dark"
             >

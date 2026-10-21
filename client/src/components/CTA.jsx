@@ -19,7 +19,7 @@ export default function CTA() {
             Create a room, invite your team, and start solving problems together in seconds.
           </p>
           <Link
-            to="/get-started"
+            to="/signup"
             className="group mt-8 inline-flex items-center gap-2 rounded-xl bg-primary px-7 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/25 transition hover:bg-primary-dark hover:shadow-primary/35 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           >
             Get Started

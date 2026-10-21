@@ -6,7 +6,7 @@ const FOOTER_LINKS = [
   { label: 'How It Works', href: '#how-it-works', isAnchor: true },
   { label: 'About', href: '#about', isAnchor: true },
   { label: 'Log in', href: '/login', isAnchor: false },
-  { label: 'Get Started', href: '/get-started', isAnchor: false },
+  { label: 'Get Started', href: '/signup', isAnchor: false },
 ];
 
 export default function Footer() {
