@@ -7,12 +7,14 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "test": "node test/verifyAuth.js && node test/verifyRooms.test.js",
+    "test": "node test/verifyAuth.js && node test/verifyRooms.test.js && node test/verifyCollaboration.test.js",
     "test:auth": "node test/verifyAuth.js",
-    "test:rooms": "node test/verifyRooms.test.js"
+    "test:rooms": "node test/verifyRooms.test.js",
+    "test:collab": "node test/verifyCollaboration.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cookie": "^2.0.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -20,12 +22,15 @@
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.11.2"
+    "mongoose": "^9.11.2",
+    "socket.io": "^4.8.4",
+    "yjs": "^13.6.33"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "mongodb-memory-server": "^11.3.0"
+    "mongodb-memory-server": "^11.3.0",
+    "socket.io-client": "^4.8.4"
   }
 }

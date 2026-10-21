@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
+import Editor from '@monaco-editor/react';
 import {
   Code2,
   ArrowLeft,
@@ -7,32 +8,35 @@ import {
   Check,
   Share2,
   Users,
-  Shield,
   FileCode,
   AlertCircle,
   Sparkles,
-  Terminal,
   LogOut,
   StopCircle,
   RotateCw,
+  CheckCircle2,
+  Cloud,
+  WifiOff,
+  ChevronDown,
+  Info,
+  Download,
 } from 'lucide-react';
 import { roomApi } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useCollaboration } from '../hooks/useCollaboration';
 
-const LANGUAGE_LABELS = {
-  javascript: 'JavaScript',
-  typescript: 'TypeScript',
-  python: 'Python',
-  cpp: 'C++',
-  java: 'Java',
-  go: 'Go',
-  rust: 'Rust',
-};
+const SUPPORTED_LANGUAGES = [
+  { id: 'javascript', label: 'JavaScript', ext: 'js' },
+  { id: 'typescript', label: 'TypeScript', ext: 'ts' },
+  { id: 'python', label: 'Python', ext: 'py' },
+  { id: 'cpp', label: 'C++', ext: 'cpp' },
+  { id: 'java', label: 'Java', ext: 'java' },
+  { id: 'json', label: 'JSON', ext: 'json' },
+];
 
 export default function Room() {
   const { roomId } = useParams();
   const { user } = useAuth();
-  const navigate = useNavigate();
 
   const [room, setRoom] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -40,9 +44,30 @@ export default function Room() {
   const [isEnding, setIsEnding] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [showRosterDropdown, setShowRosterDropdown] = useState(false);
+  const [showInfoSidebar, setShowInfoSidebar] = useState(false);
+
+  // Initialize collaborative Yjs & Socket.IO hook
+  const {
+    status: socketStatus,
+    saveStatus,
+    lastSavedAt,
+    presence,
+    language,
+    bindEditor,
+    changeLanguage,
+    getCode,
+  } = useCollaboration({
+    roomId,
+    initialLanguage: room?.language || 'javascript',
+    onRoomError: (errMsg) => {
+      console.warn('Collaboration error:', errMsg);
+    },
+  });
 
   /**
-   * Load room details and establish membership
+   * Load room details and establish membership in MongoDB
    */
   const loadRoom = useCallback(async () => {
     if (!roomId) return;
@@ -92,9 +117,12 @@ export default function Room() {
       if (type === 'id') {
         setCopiedId(true);
         setTimeout(() => setCopiedId(false), 2000);
-      } else {
+      } else if (type === 'link') {
         setCopiedLink(true);
         setTimeout(() => setCopiedLink(false), 2000);
+      } else if (type === 'code') {
+        setCopiedCode(true);
+        setTimeout(() => setCopiedCode(false), 2000);
       }
     } catch {
       // Ignore
@@ -102,7 +130,11 @@ export default function Room() {
   };
 
   const handleEndRoom = async () => {
-    if (!window.confirm('Are you sure you want to end this interview room? No new participants will be able to join.')) {
+    if (
+      !window.confirm(
+        'Are you sure you want to end this interview room? The room will become read-only.'
+      )
+    ) {
       return;
     }
 
@@ -115,6 +147,22 @@ export default function Room() {
     } finally {
       setIsEnding(false);
     }
+  };
+
+  const handleDownloadCode = () => {
+    const currentCode = getCode();
+    const currentLangObj = SUPPORTED_LANGUAGES.find((l) => l.id === language) || { ext: 'txt' };
+    const blob = new Blob([currentCode], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${room?.title || 'code'}-${roomId}.${currentLangObj.ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleEditorDidMount = (editor) => {
+    bindEditor(editor);
   };
 
   const inviteUrl = window.location.href;
@@ -133,7 +181,7 @@ export default function Room() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>
-          <span>Connecting to Room Lobby...</span>
+          <span>Connecting to Collaborative Room...</span>
         </div>
       </div>
     );
@@ -172,267 +220,519 @@ export default function Room() {
     );
   }
 
-  // ── Room Lobby View ──────────────────────────────────────────
+  // Determine active online presence count
+  const activeCount = presence.length > 0 ? presence.length : 1;
+
   return (
-    <div className="min-h-screen bg-bg text-text flex flex-col">
-      {/* ── Top Bar ───────────────────────────────────────────── */}
-      <header className="h-16 border-b border-white/[0.08] bg-surface/85 backdrop-blur-xl px-4 sm:px-8 flex items-center justify-between gap-4 sticky top-0 z-40">
-        <div className="flex items-center gap-3">
+    <div className="h-screen w-screen bg-bg text-text flex flex-col overflow-hidden select-none">
+      {/* ── Top Header Bar ────────────────────────────────────── */}
+      <header className="h-14 shrink-0 border-b border-white/[0.08] bg-surface/90 backdrop-blur-xl px-3 sm:px-5 flex items-center justify-between gap-3 z-30">
+        {/* Left: Brand + Room Title & ID */}
+        <div className="flex items-center gap-3 min-w-0">
           <Link
             to="/dashboard"
-            className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text px-2.5 py-1.5 rounded-lg hover:bg-white/[0.06] transition"
+            className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text px-2 py-1 rounded-lg hover:bg-white/[0.06] transition"
+            title="Return to Dashboard"
           >
             <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Workspace</span>
+            <span className="hidden md:inline font-medium">Dashboard</span>
           </Link>
 
-          <div className="h-4 w-px bg-white/[0.08]" />
+          <div className="h-4 w-px bg-white/[0.08] hidden sm:block" />
 
-          <div className="flex items-center gap-2 truncate">
-            <span className="text-xs text-text-muted hidden sm:inline">Lobby:</span>
-            <span className="text-xs font-semibold text-text truncate max-w-xs">{room.title}</span>
+          {/* Logo & Room Title */}
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 text-primary">
+              <Code2 className="h-4 w-4" />
+            </div>
+            <div className="flex items-center gap-2 min-w-0">
+              <h1 className="text-xs sm:text-sm font-semibold text-text truncate max-w-[140px] sm:max-w-xs md:max-w-md">
+                {room.title}
+              </h1>
+              {/* Room ID Badge */}
+              <button
+                type="button"
+                onClick={() => copyToClipboard(room.roomId, 'id')}
+                className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono text-accent bg-surface-light border border-white/[0.08] hover:border-white/[0.2] transition shrink-0"
+                title="Click to copy Room ID"
+              >
+                <span>{room.roomId}</span>
+                {copiedId ? (
+                  <Check className="h-3 w-3 text-emerald-400" />
+                ) : (
+                  <Copy className="h-3 w-3 text-text-muted hover:text-text" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Right Actions */}
-        <div className="flex items-center gap-3">
-          {/* Status pill */}
-          <span
-            className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${
-              isActive
-                ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20'
-                : 'bg-white/[0.06] text-text-muted border-white/[0.1]'
-            }`}
-          >
-            {isActive && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />}
-            {isActive ? 'Room Active' : 'Session Ended'}
-          </span>
+        {/* Center: Live Connection & Save Status */}
+        <div className="hidden lg:flex items-center gap-3">
+          {/* Socket Connection Status */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.08] bg-surface-light/40 text-[11px]">
+            {socketStatus === 'connected' && (
+              <>
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-emerald-400 font-medium">Connected</span>
+              </>
+            )}
+            {socketStatus === 'connecting' && (
+              <>
+                <span className="h-2 w-2 rounded-full bg-amber-400 animate-ping" />
+                <span className="text-amber-400 font-medium">Connecting...</span>
+              </>
+            )}
+            {socketStatus === 'reconnecting' && (
+              <>
+                <RotateCw className="h-3 w-3 text-amber-400 animate-spin" />
+                <span className="text-amber-400 font-medium">Reconnecting...</span>
+              </>
+            )}
+            {socketStatus === 'disconnected' && (
+              <>
+                <WifiOff className="h-3 w-3 text-rose-400" />
+                <span className="text-rose-400 font-medium">Disconnected</span>
+              </>
+            )}
+          </div>
 
-          {/* End Room Button (Creator only) */}
+          {/* Autosave Status */}
+          <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
+            {saveStatus === 'saving' ? (
+              <span className="inline-flex items-center gap-1 text-primary-light">
+                <svg className="h-3 w-3 animate-spin text-primary-light" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+                Saving...
+              </span>
+            ) : saveStatus === 'error' ? (
+              <span className="inline-flex items-center gap-1 text-rose-400" title="Autosave error">
+                <Cloud className="h-3 w-3" />
+                Autosave failed
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-emerald-400/90" title={lastSavedAt ? `Saved at ${lastSavedAt.toLocaleTimeString()}` : 'Saved in cloud'}>
+                <CheckCircle2 className="h-3 w-3" />
+                Saved
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Presence Roster, Share, End, Leave */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Active Participants Dropdown Trigger */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowRosterDropdown(!showRosterDropdown)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-surface-light/60 hover:bg-surface-light text-xs font-medium text-text transition"
+              title="View Active Participants"
+            >
+              <div className="relative flex items-center">
+                <Users className="h-3.5 w-3.5 text-accent" />
+                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-emerald-400" />
+              </div>
+              <span className="hidden sm:inline font-mono">{activeCount} online</span>
+              <ChevronDown className="h-3 w-3 text-text-muted" />
+            </button>
+
+            {/* Dropdown Menu */}
+            {showRosterDropdown && (
+              <div className="absolute right-0 mt-2 w-64 rounded-xl border border-white/[0.1] bg-surface/95 backdrop-blur-2xl p-3 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="flex items-center justify-between pb-2 border-b border-white/[0.08] mb-2">
+                  <span className="text-xs font-semibold text-text">Active Participants</span>
+                  <span className="text-[10px] text-text-muted font-mono">{activeCount} connected</span>
+                </div>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                  {presence.length > 0 ? (
+                    presence.map((p, idx) => {
+                      const isMe = p.id === user?._id || p.id === user?.id || p.email === user?.email;
+                      const isHost = p.role === 'creator' || p.id === room.creator?.id;
+
+                      return (
+                        <div
+                          key={p.socketId || p.id || idx}
+                          className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-white/[0.04] text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="h-6 w-6 rounded-md bg-surface-light border border-white/[0.08] flex items-center justify-center font-bold text-[10px] text-text shrink-0">
+                              {p.name ? p.name.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-text truncate flex items-center gap-1.5">
+                                <span>{p.name}</span>
+                                {isMe && (
+                                  <span className="text-[9px] text-primary-light bg-primary/10 px-1 py-0.2 rounded font-sans">
+                                    You
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                              isHost
+                                ? 'bg-primary/10 text-primary-light border border-primary/20'
+                                : 'bg-white/[0.04] text-text-muted border border-white/[0.08]'
+                            }`}
+                          >
+                            {isHost ? 'Host' : 'Member'}
+                          </span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-2 text-xs text-text-muted">
+                      {user?.name || 'You'} (Active)
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Copy Link Button */}
+          <button
+            type="button"
+            onClick={() => copyToClipboard(inviteUrl, 'link')}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-primary hover:bg-primary-dark shadow-sm transition shrink-0"
+            title="Copy Invite Link"
+          >
+            {copiedLink ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="hidden sm:inline text-emerald-300">Copied!</span>
+              </>
+            ) : (
+              <>
+                <Share2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Invite</span>
+              </>
+            )}
+          </button>
+
+          {/* End Room Button (Creator Only) */}
           {isCreator && isActive && (
             <button
               onClick={handleEndRoom}
               disabled={isEnding}
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 px-3 py-1.5 text-xs font-medium text-rose-300 transition disabled:opacity-50"
+              className="hidden sm:inline-flex items-center gap-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 px-2.5 py-1.5 text-xs font-medium text-rose-300 transition disabled:opacity-50"
+              title="End this session"
             >
               <StopCircle className="h-3.5 w-3.5" />
-              <span>{isEnding ? 'Ending...' : 'End Room'}</span>
+              <span>{isEnding ? 'Ending...' : 'End'}</span>
             </button>
           )}
 
+          {/* Leave Button */}
           <Link
             to="/dashboard"
-            className="flex items-center gap-1.5 text-xs font-medium text-text-muted hover:text-text px-3 py-1.5 rounded-lg border border-white/[0.08] hover:bg-white/[0.04] transition"
+            className="flex items-center gap-1 text-xs font-medium text-text-muted hover:text-text px-2 py-1.5 rounded-lg border border-white/[0.08] hover:bg-white/[0.04] transition"
+            title="Leave room"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Leave Room</span>
+            <span className="hidden md:inline">Leave</span>
           </Link>
         </div>
       </header>
 
-      {/* ── Status / Lifecycle Alert ──────────────────────────── */}
-      {!isActive ? (
-        <div className="bg-amber-500/[0.08] border-b border-amber-500/20 px-4 py-3 text-center text-xs text-amber-300">
-          This interview room has concluded. Live editing and communications are closed. You can review the participant roster below.
-        </div>
-      ) : (
-        <div className="bg-primary/[0.06] border-b border-primary/20 px-4 py-2.5 text-center text-xs text-text leading-relaxed">
-          <div className="flex items-center justify-center gap-2">
-            <Sparkles className="h-3.5 w-3.5 text-primary-light shrink-0" />
-            <span>
-              <strong>Room Lobby Ready</strong> — Live synchronized Monaco editor, WebRTC video/audio peer mesh, and whiteboard will initialize here upon Socket.IO activation.
-            </span>
-          </div>
+      {/* ── Concluded Session Banner ──────────────────────────── */}
+      {!isActive && (
+        <div className="bg-amber-500/10 border-b border-amber-500/25 px-4 py-2 text-center text-xs text-amber-300 flex items-center justify-center gap-2">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            This interview session has concluded. The workspace is currently in <strong>read-only</strong> mode.
+          </span>
         </div>
       )}
 
-      {/* ── Main Lobby Content ────────────────────────────────── */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-8 space-y-6">
-        {/* Session Card */}
-        <div className="rounded-2xl border border-white/[0.08] bg-surface/75 backdrop-blur-xl p-6 sm:p-8 space-y-6 shadow-xl">
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-white/[0.06] pb-6">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] uppercase tracking-wider font-semibold text-primary-light bg-primary/10 border border-primary/20 px-2.5 py-0.5 rounded-full">
-                  Interview Session
-                </span>
-                <span className="text-xs font-mono text-accent bg-surface-light border border-white/[0.08] px-2.5 py-0.5 rounded-md">
-                  {room.roomId}
-                </span>
-              </div>
-              <h1 className="text-2xl font-bold text-text tracking-tight">{room.title}</h1>
-              <p className="text-xs text-text-muted mt-1">
-                Hosted by <strong className="text-text">{room.creator?.name || 'Session Host'}</strong> ({room.creator?.email || 'Host'})
-              </p>
-            </div>
-
-            {/* Quick Share Buttons */}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => copyToClipboard(room.roomId, 'id')}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-text bg-surface-light hover:bg-surface-lighter border border-white/[0.08] transition"
-              >
-                {copiedId ? (
-                  <>
-                    <Check className="h-3.5 w-3.5 text-emerald-400" />
-                    <span className="text-emerald-400">ID Copied</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3.5 w-3.5" />
-                    <span>Copy Room ID</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => copyToClipboard(inviteUrl, 'link')}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white bg-primary hover:bg-primary-dark shadow-md shadow-primary/25 transition"
-              >
-                {copiedLink ? (
-                  <>
-                    <Check className="h-3.5 w-3.5" />
-                    <span>Link Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Share2 className="h-3.5 w-3.5" />
-                    <span>Copy Invite Link</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Session Metadata Grid */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-white/[0.06] bg-surface-light/30 p-4 space-y-1">
-              <span className="text-[11px] text-text-muted flex items-center gap-1.5">
-                <FileCode className="h-3.5 w-3.5 text-primary-light" />
-                Target Language
-              </span>
-              <p className="text-sm font-semibold text-text capitalize">
-                {LANGUAGE_LABELS[room.language] || room.language}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-white/[0.06] bg-surface-light/30 p-4 space-y-1">
-              <span className="text-[11px] text-text-muted flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5 text-accent" />
-                Total Participants
-              </span>
-              <p className="text-sm font-semibold text-text">
-                {room.participants?.length || 1} Registered Member{(room.participants?.length || 1) > 1 ? 's' : ''}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-white/[0.06] bg-surface-light/30 p-4 space-y-1">
-              <span className="text-[11px] text-text-muted flex items-center gap-1.5">
-                <Shield className="h-3.5 w-3.5 text-emerald-400" />
-                Access Control
-              </span>
-              <p className="text-sm font-semibold text-text">
-                {room.isOwner ? 'You are Host' : 'Participant'}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Participant Roster */}
-        <div className="rounded-2xl border border-white/[0.08] bg-surface/75 backdrop-blur-xl p-6 sm:p-8 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary-light" />
-              <h3 className="text-sm font-semibold text-text">Registered Participants</h3>
-            </div>
-            <span className="text-[11px] text-text-muted/60">
-              Live presence detection activates with Socket.IO
+      {/* ── Editor Toolbar (Language, Actions, Shortcuts) ──────── */}
+      <div className="h-11 shrink-0 border-b border-white/[0.08] bg-[#0c1017] px-3 sm:px-5 flex items-center justify-between gap-3">
+        {/* Left: Language Selector */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <FileCode className="h-3.5 w-3.5 text-primary-light" />
+            <span className="text-[11px] text-text-muted uppercase tracking-wider font-semibold hidden sm:inline">
+              Language:
             </span>
+            <select
+              value={language}
+              disabled={!isActive}
+              onChange={(e) => changeLanguage(e.target.value)}
+              className="bg-surface-light border border-white/[0.1] text-text rounded-md px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary hover:border-white/[0.2] transition cursor-pointer disabled:opacity-50"
+            >
+              {SUPPORTED_LANGUAGES.map((lang) => (
+                <option key={lang.id} value={lang.id} className="bg-surface text-text">
+                  {lang.label}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="divide-y divide-white/[0.06] border border-white/[0.06] rounded-xl overflow-hidden bg-surface-light/20">
-            {room.participants?.map((participant, index) => {
-              const isCurrentUser =
-                participant.id === user?._id ||
-                participant.id === user?.id ||
-                participant.email === user?.email;
+          <div className="h-3.5 w-px bg-white/[0.08] hidden sm:block" />
 
-              const isHost = participant.role === 'creator';
-
-              return (
-                <div
-                  key={participant.id || index}
-                  className="px-4 py-3 flex items-center justify-between gap-3 text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-surface-light border border-white/[0.08] flex items-center justify-center font-bold text-text text-xs">
-                      {participant.name
-                        ? participant.name
-                            .split(' ')
-                            .map((p) => p[0])
-                            .join('')
-                            .slice(0, 2)
-                            .toUpperCase()
-                        : 'U'}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-text">
-                          {participant.name}
-                        </span>
-                        {isCurrentUser && (
-                          <span className="text-[10px] text-primary-light bg-primary/10 px-1.5 py-0.5 rounded">
-                            You
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-text-muted">{participant.email}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${
-                        isHost
-                          ? 'bg-primary/10 text-primary-light border-primary/20'
-                          : 'bg-white/[0.04] text-text-muted border-white/[0.08]'
-                      }`}
-                    >
-                      {isHost ? 'Host / Creator' : 'Candidate'}
-                    </span>
-                    <span className="text-[10px] text-text-muted/60 hidden sm:inline">
-                      Joined {participant.joinedAt ? new Date(participant.joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'recently'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {/* Live Sync Badge */}
+          <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-text-muted">
+            <Sparkles className="h-3 w-3 text-accent" />
+            <span>Yjs CRDT Real-Time Sync</span>
+          </span>
         </div>
 
-        {/* Real-Time Readiness Sandbox Preview Notice */}
-        <div className="rounded-2xl border border-white/[0.08] bg-surface/50 p-6 backdrop-blur-xl flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 text-xs text-text-muted">
-            <Terminal className="h-5 w-5 text-accent shrink-0" />
-            <div>
-              <p className="font-semibold text-text text-xs">Real-Time Workspace Pipeline Ready</p>
-              <p className="text-text-muted/70 text-[11px] mt-0.5">
-                Room ID <code className="text-accent">{room.roomId}</code> is authenticated and ready for bidirectional event emission, Monaco collaborative buffers, and WebRTC streaming.
-              </p>
-            </div>
-          </div>
-
-          <Link
-            to="/dashboard"
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-surface-light px-4 py-2 text-xs font-medium text-text hover:bg-surface-lighter transition"
+        {/* Right: Quick Code Actions */}
+        <div className="flex items-center gap-1.5">
+          {/* Copy Code */}
+          <button
+            type="button"
+            onClick={() => copyToClipboard(getCode(), 'code')}
+            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs text-text-muted hover:text-text hover:bg-white/[0.04] transition border border-white/[0.06]"
+            title="Copy all code to clipboard"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Return to Dashboard
-          </Link>
+            {copiedCode ? (
+              <>
+                <Check className="h-3 w-3 text-emerald-400" />
+                <span className="text-emerald-400 text-[11px]">Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3 w-3" />
+                <span className="text-[11px] hidden sm:inline">Copy Code</span>
+              </>
+            )}
+          </button>
+
+          {/* Download File */}
+          <button
+            type="button"
+            onClick={handleDownloadCode}
+            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs text-text-muted hover:text-text hover:bg-white/[0.04] transition border border-white/[0.06]"
+            title="Download source code file"
+          >
+            <Download className="h-3 w-3" />
+            <span className="text-[11px] hidden sm:inline">Export</span>
+          </button>
+
+          {/* Toggle Info Sidebar */}
+          <button
+            type="button"
+            onClick={() => setShowInfoSidebar(!showInfoSidebar)}
+            className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs transition border ${
+              showInfoSidebar
+                ? 'bg-primary/20 text-primary-light border-primary/30'
+                : 'text-text-muted hover:text-text hover:bg-white/[0.04] border-white/[0.06]'
+            }`}
+            title="Toggle Session Info Panel"
+          >
+            <Info className="h-3 w-3" />
+            <span className="text-[11px] hidden sm:inline">Details</span>
+          </button>
         </div>
-      </main>
+      </div>
+
+      {/* ── Main Workspace Body: Monaco + Optional Sidebar ────── */}
+      <div className="flex-1 flex min-h-0 relative overflow-hidden bg-[#1e1e1e]">
+        {/* Monaco Editor Container */}
+        <div className="flex-1 min-w-0 h-full relative">
+          <Editor
+            height="100%"
+            width="100%"
+            theme="vs-dark"
+            language={language}
+            options={{
+              readOnly: !isActive,
+              fontSize: 14,
+              tabSize: 2,
+              lineNumbers: 'on',
+              minimap: { enabled: true, side: 'right' },
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              wordWrap: 'on',
+              padding: { top: 12, bottom: 12 },
+              fontFamily:
+                "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, 'Courier New', monospace",
+              fontLigatures: true,
+              cursorBlinking: 'smooth',
+              cursorSmoothCaretAnimation: 'on',
+              smoothScrolling: true,
+              contextmenu: true,
+              formatOnPaste: false,
+              renderWhitespace: 'selection',
+            }}
+            loading={
+              <div className="h-full w-full bg-[#1e1e1e] flex flex-col items-center justify-center space-y-3">
+                <svg className="h-6 w-6 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+                <span className="text-xs text-text-muted">Initializing Monaco Editor...</span>
+              </div>
+            }
+            onMount={handleEditorDidMount}
+          />
+        </div>
+
+        {/* Optional Collapsible Session Info Sidebar */}
+        {showInfoSidebar && (
+          <aside className="w-80 shrink-0 border-l border-white/[0.08] bg-[#0d121c] p-4 flex flex-col justify-between overflow-y-auto animate-in slide-in-from-right duration-200">
+            <div className="space-y-5">
+              <div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-primary-light">
+                  Session Information
+                </span>
+                <h3 className="text-sm font-bold text-text mt-1">{room.title}</h3>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Host: <span className="text-text">{room.creator?.name || 'Creator'}</span>
+                </p>
+              </div>
+
+              {/* Room ID Copy Block */}
+              <div className="rounded-xl border border-white/[0.08] bg-surface-light/40 p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs text-text-muted">
+                  <span>Room ID</span>
+                  <span className="font-mono text-accent text-[11px]">{room.roomId}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(room.roomId, 'id')}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-surface-light hover:bg-surface-lighter text-xs font-medium text-text border border-white/[0.08] transition"
+                >
+                  {copiedId ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-400" />
+                      <span className="text-emerald-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      <span>Copy Room ID</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Status and Diagnostics */}
+              <div className="rounded-xl border border-white/[0.08] bg-surface-light/40 p-3 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Status</span>
+                  <span
+                    className={`font-medium ${
+                      isActive ? 'text-emerald-400' : 'text-amber-400'
+                    }`}
+                  >
+                    {isActive ? 'Active' : 'Ended'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Transport</span>
+                  <span className="text-text font-mono text-[11px]">Socket.IO + Yjs</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Persistence</span>
+                  <span className="text-emerald-400 font-mono text-[11px]">MongoDB Debounced</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Syntax</span>
+                  <span className="text-text capitalize font-mono text-[11px]">{language}</span>
+                </div>
+              </div>
+
+              {/* Registered Members List */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-text">Session Members</span>
+                  <span className="text-text-muted text-[11px] font-mono">
+                    {room.participants?.length || 1}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 divide-y divide-white/[0.04]">
+                  {room.participants?.map((participant, index) => {
+                    const isCurrentUser =
+                      participant.id === user?._id ||
+                      participant.id === user?.id ||
+                      participant.email === user?.email;
+                    const isHost = participant.role === 'creator';
+                    const isOnline = presence.some(
+                      (p) => p.id === participant.id || p.email === participant.email
+                    );
+
+                    return (
+                      <div
+                        key={participant.id || index}
+                        className="pt-2 first:pt-0 flex items-center justify-between text-xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="relative">
+                            <div className="h-6 w-6 rounded-md bg-surface-light border border-white/[0.08] flex items-center justify-center font-bold text-[10px] text-text">
+                              {participant.name ? participant.name.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                            {isOnline && (
+                              <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-400 ring-1 ring-bg" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-text truncate text-[11px] flex items-center gap-1">
+                              <span>{participant.name}</span>
+                              {isCurrentUser && (
+                                <span className="text-[9px] text-primary-light bg-primary/10 px-1 py-0.2 rounded font-sans">
+                                  You
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-text-muted truncate">
+                              {participant.email}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                            isHost
+                              ? 'bg-primary/10 text-primary-light border border-primary/20'
+                              : 'bg-white/[0.04] text-text-muted border border-white/[0.08]'
+                          }`}
+                        >
+                          {isHost ? 'Host' : 'Member'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-white/[0.08] text-center">
+              <span className="text-[10px] text-text-muted/60">
+                CodeSync Hub Collaborative Workspace
+              </span>
+            </div>
+          </aside>
+        )}
+      </div>
+
+      {/* ── Status Bar at Bottom ──────────────────────────────── */}
+      <footer className="h-7 shrink-0 border-t border-white/[0.08] bg-[#080b11] px-4 flex items-center justify-between text-[11px] text-text-muted font-mono z-30">
+        <div className="flex items-center gap-4">
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            <span>Monaco Editor</span>
+          </span>
+          <span className="hidden sm:inline">UTF-8</span>
+          <span className="hidden sm:inline">CRLF</span>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <span className="capitalize">{language}</span>
+          <span className="text-emerald-400/90 hidden sm:inline">
+            {socketStatus === 'connected' ? '● Online' : '○ Offline'}
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

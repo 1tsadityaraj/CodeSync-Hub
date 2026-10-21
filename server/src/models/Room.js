@@ -9,6 +9,7 @@ export const SUPPORTED_LANGUAGES = [
   'java',
   'go',
   'rust',
+  'json',
 ];
 
 /**
@@ -81,6 +82,10 @@ const roomSchema = new mongoose.Schema(
       index: true,
     },
     participants: [participantSchema],
+    code: {
+      type: String,
+      default: '',
+    },
     endedAt: {
       type: Date,
       default: null,
@@ -128,6 +133,7 @@ roomSchema.methods.toSafeObject = function (requestingUserId = null) {
     roomId: this.roomId,
     title: this.title,
     language: this.language,
+    code: this.code || '',
     status: this.status,
     isOwner,
     creator: this.creator && typeof this.creator === 'object' && this.creator._id

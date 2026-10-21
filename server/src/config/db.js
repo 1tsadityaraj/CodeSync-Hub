@@ -8,6 +8,20 @@ export async function connectDB() {
   const uri = process.env.MONGODB_URI;
 
   if (!uri) {
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        console.log('⚡ No MONGODB_URI provided; launching in-memory MongoDB for seamless development...');
+        const { MongoMemoryServer } = await import('mongodb-memory-server');
+        const mongod = await MongoMemoryServer.create();
+        const memUri = mongod.getUri();
+        const conn = await mongoose.connect(memUri);
+        console.log(`✅ Development In-Memory MongoDB Connected: ${conn.connection.name}`);
+        return conn;
+      } catch (memErr) {
+        console.warn('Could not launch in-memory MongoDB:', memErr.message);
+      }
+    }
+
     console.warn(
       '⚠️  MONGODB_URI is not defined in environment variables.\n' +
       '   Please set MONGODB_URI in your server/.env file (see .env.example).\n' +

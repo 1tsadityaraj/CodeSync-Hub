@@ -8,6 +8,11 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  resolve: {
+    alias: {
+      'monaco-editor/esm/vs/editor/editor.api.js': 'monaco-editor',
+    },
+  },
   server: {
     port: 5173,
     proxy: {
@@ -15,6 +20,12 @@ export default defineConfig({
         target: 'http://localhost:5001',
         changeOrigin: true,
       },
+      '/socket.io': {
+        target: 'http://localhost:5001',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 })
+
