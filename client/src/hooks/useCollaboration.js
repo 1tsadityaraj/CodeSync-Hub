@@ -8,6 +8,7 @@ import { createSocketConnection } from '../lib/socket';
  * Socket.IO transport, presence, and language synchronization for a room.
  */
 export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoomError }) {
+  const [socket, setSocket] = useState(null);
   const [status, setStatus] = useState('connecting'); // 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'saving' | 'error'
   const [lastSavedAt, setLastSavedAt] = useState(null);
@@ -31,38 +32,39 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
     ytextRef.current = ytext;
 
     // 2. Connect authenticated socket
-    const socket = createSocketConnection();
-    socketRef.current = socket;
+    const s = createSocketConnection();
+    socketRef.current = s;
+    setSocket(s);
 
     // Socket lifecycle events
-    socket.on('connect', () => {
+    s.on('connect', () => {
       setStatus('connected');
-      socket.emit('room:join', { roomId });
+      s.emit('room:join', { roomId });
     });
 
-    socket.on('disconnect', () => {
+    s.on('disconnect', () => {
       setStatus('disconnected');
     });
 
-    socket.on('connect_error', (err) => {
+    s.on('connect_error', (err) => {
       setStatus('disconnected');
       if (onRoomError) onRoomError(err.message || 'Connection error');
     });
 
-    socket.io.on('reconnect_attempt', () => {
+    s.io.on('reconnect_attempt', () => {
       setStatus('reconnecting');
     });
 
-    socket.io.on('reconnect', () => {
+    s.io.on('reconnect', () => {
       setStatus('connected');
       // Re-join and request missing state
-      socket.emit('room:join', { roomId });
+      s.emit('room:join', { roomId });
       const stateVector = Array.from(Y.encodeStateVector(doc));
-      socket.emit('yjs:sync-step-1', { roomId, stateVector });
+      s.emit('yjs:sync-step-1', { roomId, stateVector });
     });
 
     // 3. Yjs Sync Protocol handlers
-    socket.on('yjs:initial-state', ({ update, language: roomLang }) => {
+    s.on('yjs:initial-state', ({ update, language: roomLang }) => {
       try {
         if (update && update.length > 0) {
           const uint8 = new Uint8Array(update);
@@ -76,7 +78,7 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
       }
     });
 
-    socket.on('yjs:sync-step-2', ({ update }) => {
+    s.on('yjs:sync-step-2', ({ update }) => {
       try {
         if (update && update.length > 0) {
           const uint8 = new Uint8Array(update);
@@ -87,7 +89,7 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
       }
     });
 
-    socket.on('yjs:update', ({ update }) => {
+    s.on('yjs:update', ({ update }) => {
       try {
         if (update && update.length > 0) {
           const uint8 = new Uint8Array(update);
@@ -105,7 +107,7 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
         return;
       }
       setSaveStatus('saving');
-      socket.emit('yjs:update', {
+      s.emit('yjs:update', {
         roomId,
         update: Array.from(update),
       });
@@ -113,22 +115,22 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
     doc.on('update', handleDocUpdate);
 
     // 5. Room presence, save status, and language sync
-    socket.on('room:presence', ({ participants }) => {
+    s.on('room:presence', ({ participants }) => {
       setPresence(participants || []);
     });
 
-    socket.on('room:save-status', ({ status: s, timestamp }) => {
-      setSaveStatus(s);
+    s.on('room:save-status', ({ status: saveStat, timestamp }) => {
+      setSaveStatus(saveStat);
       if (timestamp) {
         setLastSavedAt(new Date(timestamp));
       }
     });
 
-    socket.on('room:language-change', ({ language: newLang }) => {
+    s.on('room:language-change', ({ language: newLang }) => {
       setLanguage(newLang);
     });
 
-    socket.on('room:error', (err) => {
+    s.on('room:error', (err) => {
       if (onRoomError) onRoomError(err.message || 'Room error occurred');
     });
 
@@ -148,9 +150,10 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
       docRef.current = null;
       ytextRef.current = null;
 
-      socket.emit('room:leave', { roomId });
-      socket.disconnect();
+      s.emit('room:leave', { roomId });
+      s.disconnect();
       socketRef.current = null;
+      setSocket(null);
     };
   }, [roomId, onRoomError]);
 
@@ -205,6 +208,7 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
   }, []);
 
   return {
+    socket,
     status,
     saveStatus,
     lastSavedAt,

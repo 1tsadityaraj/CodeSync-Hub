@@ -19,8 +19,8 @@ class RoomManager {
   }
 
   /**
-   * Get or initialize an active in-memory room with Yjs document.
-   * Loads initial code snapshot from MongoDB if document is not yet in memory.
+   * Get or initialize an active in-memory room with Yjs document and whiteboard state.
+   * Loads initial code and whiteboard snapshot from MongoDB if room is not yet in memory.
    */
   async getOrCreateRoom(roomId, initialCode = '') {
     if (this.rooms.has(roomId)) {
@@ -29,18 +29,27 @@ class RoomManager {
 
     const doc = new Y.Doc();
     const ytext = doc.getText('monaco');
+    const whiteboardObjects = new Map();
+    const deletedObjectIds = new Set();
 
-    // If code exists in MongoDB, populate the Yjs document
+    // If code/whiteboard exists in MongoDB, populate the in-memory room
     let codeToLoad = initialCode;
-    if (!codeToLoad) {
-      try {
-        const dbRoom = await Room.findOne({ roomId }).select('code');
-        if (dbRoom && dbRoom.code) {
+    try {
+      const dbRoom = await Room.findOne({ roomId }).select('code whiteboard');
+      if (dbRoom) {
+        if (!codeToLoad && dbRoom.code) {
           codeToLoad = dbRoom.code;
         }
-      } catch (err) {
-        console.error(`Failed to load persisted code for room ${roomId}:`, err.message);
+        if (Array.isArray(dbRoom.whiteboard)) {
+          for (const obj of dbRoom.whiteboard) {
+            if (obj && obj.id) {
+              whiteboardObjects.set(obj.id, obj);
+            }
+          }
+        }
       }
+    } catch (err) {
+      console.error(`Failed to load persisted room data for room ${roomId}:`, err.message);
     }
 
     if (codeToLoad) {
@@ -51,6 +60,11 @@ class RoomManager {
 
     const roomState = {
       doc,
+      whiteboardObjects,
+      deletedObjectIds,
+      whiteboardSaveTimer: null,
+      isWhiteboardSaving: false,
+      pendingWhiteboardSave: false,
       participants: new Map(),
       saveTimer: null,
       isSaving: false,
@@ -124,15 +138,139 @@ class RoomManager {
   }
 
   /**
-   * Flush pending changes immediately (e.g. when room ends or server shuts down).
+   * Get all active whiteboard objects for a room.
+   */
+  getWhiteboardObjects(roomId) {
+    const roomState = this.rooms.get(roomId);
+    if (!roomState) return [];
+    return Array.from(roomState.whiteboardObjects.values());
+  }
+
+  /**
+   * Add or update a whiteboard object with tombstone protection against resurrection.
+   */
+  addOrUpdateWhiteboardObject(roomId, object) {
+    const roomState = this.rooms.get(roomId);
+    if (!roomState || !object || !object.id) return false;
+
+    // Tombstone check: prevent resurrection of deleted object
+    if (roomState.deletedObjectIds.has(object.id)) {
+      return false;
+    }
+
+    roomState.whiteboardObjects.set(object.id, {
+      ...object,
+      updatedAt: Date.now(),
+    });
+    return true;
+  }
+
+  /**
+   * Delete a whiteboard object and record its tombstone.
+   */
+  deleteWhiteboardObject(roomId, objectId) {
+    const roomState = this.rooms.get(roomId);
+    if (!roomState || !objectId) return false;
+
+    roomState.deletedObjectIds.add(objectId);
+    roomState.whiteboardObjects.delete(objectId);
+    return true;
+  }
+
+  /**
+   * Clear all whiteboard objects in a room and tombstone all cleared IDs.
+   */
+  clearWhiteboard(roomId) {
+    const roomState = this.rooms.get(roomId);
+    if (!roomState) return;
+
+    for (const id of roomState.whiteboardObjects.keys()) {
+      roomState.deletedObjectIds.add(id);
+    }
+    roomState.whiteboardObjects.clear();
+  }
+
+  /**
+   * Schedule debounced whiteboard snapshot save to MongoDB (1500ms).
+   */
+  scheduleWhiteboardSave(roomId, io = null) {
+    const roomState = this.rooms.get(roomId);
+    if (!roomState) return;
+
+    if (io) {
+      io.to(roomId).emit('whiteboard:save-status', { status: 'saving' });
+    }
+
+    if (roomState.whiteboardSaveTimer) {
+      clearTimeout(roomState.whiteboardSaveTimer);
+    }
+
+    roomState.whiteboardSaveTimer = setTimeout(async () => {
+      await this.persistWhiteboard(roomId, io);
+    }, 1500);
+  }
+
+  /**
+   * Persist current whiteboard objects snapshot directly into MongoDB.
+   */
+  async persistWhiteboard(roomId, io = null) {
+    const roomState = this.rooms.get(roomId);
+    if (!roomState) return;
+
+    if (roomState.isWhiteboardSaving) {
+      roomState.pendingWhiteboardSave = true;
+      return;
+    }
+
+    roomState.isWhiteboardSaving = true;
+    const currentObjects = Array.from(roomState.whiteboardObjects.values());
+
+    try {
+      await Room.findOneAndUpdate(
+        { roomId },
+        { whiteboard: currentObjects },
+        { returnDocument: 'after' }
+      );
+
+      if (io) {
+        io.to(roomId).emit('whiteboard:save-status', {
+          status: 'saved',
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (err) {
+      console.error(`[RoomManager] Failed to persist whiteboard for room ${roomId}:`, err.message);
+      if (io) {
+        io.to(roomId).emit('whiteboard:save-status', { status: 'error', message: 'Whiteboard save failed' });
+      }
+    } finally {
+      roomState.isWhiteboardSaving = false;
+      if (roomState.pendingWhiteboardSave) {
+        roomState.pendingWhiteboardSave = false;
+        await this.persistWhiteboard(roomId, io);
+      }
+    }
+  }
+
+  /**
+   * Flush pending changes immediately for both code and whiteboard (e.g. when room ends or server shuts down).
    */
   async flush(roomId) {
     const roomState = this.rooms.get(roomId);
-    if (roomState?.saveTimer) {
+    if (!roomState) return;
+
+    if (roomState.saveTimer) {
       clearTimeout(roomState.saveTimer);
       roomState.saveTimer = null;
     }
-    await this.persistCode(roomId);
+    if (roomState.whiteboardSaveTimer) {
+      clearTimeout(roomState.whiteboardSaveTimer);
+      roomState.whiteboardSaveTimer = null;
+    }
+    await Promise.all([
+      this.persistCode(roomId),
+      this.persistWhiteboard(roomId),
+    ]);
   }
 
   /**

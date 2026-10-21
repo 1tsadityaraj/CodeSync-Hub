@@ -86,6 +86,10 @@ const roomSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    whiteboard: {
+      type: Array,
+      default: [],
+    },
     endedAt: {
       type: Date,
       default: null,
@@ -134,6 +138,7 @@ roomSchema.methods.toSafeObject = function (requestingUserId = null) {
     title: this.title,
     language: this.language,
     code: this.code || '',
+    whiteboard: this.whiteboard || [],
     status: this.status,
     isOwner,
     creator: this.creator && typeof this.creator === 'object' && this.creator._id

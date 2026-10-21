@@ -20,10 +20,14 @@ import {
   ChevronDown,
   Info,
   Download,
+  PenTool,
+  Columns,
 } from 'lucide-react';
 import { roomApi } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useCollaboration } from '../hooks/useCollaboration';
+import { useWhiteboard } from '../hooks/useWhiteboard';
+import Whiteboard from '../components/whiteboard/Whiteboard';
 
 const SUPPORTED_LANGUAGES = [
   { id: 'javascript', label: 'JavaScript', ext: 'js' },
@@ -47,9 +51,11 @@ export default function Room() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [showRosterDropdown, setShowRosterDropdown] = useState(false);
   const [showInfoSidebar, setShowInfoSidebar] = useState(false);
+  const [viewMode, setViewMode] = useState('split'); // 'code' | 'split' | 'whiteboard'
 
   // Initialize collaborative Yjs & Socket.IO hook
   const {
+    socket,
     status: socketStatus,
     saveStatus,
     lastSavedAt,
@@ -64,6 +70,16 @@ export default function Room() {
     onRoomError: (errMsg) => {
       console.warn('Collaboration error:', errMsg);
     },
+  });
+
+  const isRoomActive = room?.status === 'active';
+
+  // Initialize collaborative Whiteboard hook
+  const whiteboard = useWhiteboard({
+    socket,
+    roomId,
+    isActive: isRoomActive,
+    user,
   });
 
   /**
@@ -267,10 +283,53 @@ export default function Room() {
           </div>
         </div>
 
-        {/* Center: Live Connection & Save Status */}
-        <div className="hidden lg:flex items-center gap-3">
+        {/* Center: Workspace Layout Switcher + Live Connection & Save Status */}
+        <div className="flex items-center gap-3">
+          {/* Workspace Layout Switcher (Code | Split | Whiteboard) */}
+          <div className="flex items-center p-0.5 rounded-lg bg-surface-light/80 border border-white/[0.08] text-xs">
+            <button
+              type="button"
+              onClick={() => setViewMode('code')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition flex items-center gap-1.5 ${
+                viewMode === 'code'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-text-muted hover:text-text'
+              }`}
+              title="Code Editor Full Width"
+            >
+              <Code2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Code</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('split')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition flex items-center gap-1.5 ${
+                viewMode === 'split'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-text-muted hover:text-text'
+              }`}
+              title="Split View (Code & Whiteboard)"
+            >
+              <Columns className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Split</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('whiteboard')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition flex items-center gap-1.5 ${
+                viewMode === 'whiteboard'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-text-muted hover:text-text'
+              }`}
+              title="Whiteboard Full Width"
+            >
+              <PenTool className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Whiteboard</span>
+            </button>
+          </div>
+
           {/* Socket Connection Status */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.08] bg-surface-light/40 text-[11px]">
+          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/[0.08] bg-surface-light/40 text-[11px]">
             {socketStatus === 'connected' && (
               <>
                 <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -297,9 +356,9 @@ export default function Room() {
             )}
           </div>
 
-          {/* Autosave Status */}
-          <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
-            {saveStatus === 'saving' ? (
+          {/* Autosave Status (Code + Whiteboard combined) */}
+          <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-text-muted">
+            {saveStatus === 'saving' || whiteboard.saveStatus === 'saving' ? (
               <span className="inline-flex items-center gap-1 text-primary-light">
                 <svg className="h-3 w-3 animate-spin text-primary-light" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -307,13 +366,16 @@ export default function Room() {
                 </svg>
                 Saving...
               </span>
-            ) : saveStatus === 'error' ? (
+            ) : saveStatus === 'error' || whiteboard.saveStatus === 'error' ? (
               <span className="inline-flex items-center gap-1 text-rose-400" title="Autosave error">
                 <Cloud className="h-3 w-3" />
                 Autosave failed
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-emerald-400/90" title={lastSavedAt ? `Saved at ${lastSavedAt.toLocaleTimeString()}` : 'Saved in cloud'}>
+              <span
+                className="inline-flex items-center gap-1 text-emerald-400/90"
+                title={lastSavedAt ? `Saved at ${lastSavedAt.toLocaleTimeString()}` : 'Saved in cloud'}
+              >
                 <CheckCircle2 className="h-3 w-3" />
                 Saved
               </span>
@@ -531,10 +593,18 @@ export default function Room() {
         </div>
       </div>
 
-      {/* ── Main Workspace Body: Monaco + Optional Sidebar ────── */}
+      {/* ── Main Workspace Body: Monaco + Whiteboard + Optional Sidebar ────── */}
       <div className="flex-1 flex min-h-0 relative overflow-hidden bg-[#1e1e1e]">
         {/* Monaco Editor Container */}
-        <div className="flex-1 min-w-0 h-full relative">
+        <div
+          className={`h-full relative transition-all duration-200 ${
+            viewMode === 'code'
+              ? 'flex-1 min-w-0'
+              : viewMode === 'split'
+              ? 'w-full lg:w-1/2 min-w-0 border-r border-white/[0.08]'
+              : 'hidden'
+          }`}
+        >
           <Editor
             height="100%"
             width="100%"
@@ -570,6 +640,26 @@ export default function Room() {
               </div>
             }
             onMount={handleEditorDidMount}
+          />
+        </div>
+
+        {/* Collaborative Whiteboard Container */}
+        <div
+          className={`h-full relative transition-all duration-200 ${
+            viewMode === 'whiteboard'
+              ? 'flex-1 min-w-0'
+              : viewMode === 'split'
+              ? 'hidden lg:flex lg:w-1/2 min-w-0'
+              : 'hidden'
+          }`}
+        >
+          <Whiteboard
+            whiteboard={whiteboard}
+            isActive={isActive}
+            isExpanded={viewMode === 'whiteboard'}
+            onToggleExpand={() =>
+              setViewMode(viewMode === 'whiteboard' ? 'split' : 'whiteboard')
+            }
           />
         </div>
 

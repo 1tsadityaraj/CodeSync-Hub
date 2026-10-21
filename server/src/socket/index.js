@@ -21,6 +21,68 @@ function parseCookies(header = '') {
   );
 }
 
+const VALID_OBJECT_TYPES = ['pen', 'line', 'rectangle', 'circle', 'arrow', 'text'];
+
+/**
+ * Validate and sanitize incoming whiteboard drawing objects
+ */
+function sanitizeWhiteboardObject(rawObj, user) {
+  if (!rawObj || typeof rawObj !== 'object') return null;
+
+  const id = typeof rawObj.id === 'string' && rawObj.id.trim() ? rawObj.id.trim().slice(0, 64) : null;
+  if (!id) return null;
+
+  const type = VALID_OBJECT_TYPES.includes(rawObj.type) ? rawObj.type : null;
+  if (!type) return null;
+
+  // Validate color (hex, rgb, hsl, or css color string)
+  let color = typeof rawObj.color === 'string' ? rawObj.color.trim().slice(0, 32) : '#ffffff';
+  if (!/^#([0-9a-fA-F]{3,8})$|^rgb\(|^rgba\(|^hsl\(/i.test(color) && !/^[a-zA-Z]+$/.test(color)) {
+    color = '#ffffff';
+  }
+
+  // Validate stroke width
+  const strokeWidth =
+    Number.isFinite(rawObj.strokeWidth) && rawObj.strokeWidth > 0 && rawObj.strokeWidth <= 50
+      ? Number(rawObj.strokeWidth)
+      : 2;
+
+  const sanitized = {
+    id,
+    type,
+    color,
+    strokeWidth,
+    userId: user._id.toString(),
+    userName: user.name,
+    createdAt: Number(rawObj.createdAt) || Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  if (type === 'pen') {
+    if (!Array.isArray(rawObj.points) || rawObj.points.length === 0) return null;
+    // Cap points array at 5000 points to prevent DoS
+    sanitized.points = rawObj.points.slice(0, 5000).map((pt) => ({
+      x: Number.isFinite(pt.x) ? Math.round(pt.x * 100) / 100 : 0,
+      y: Number.isFinite(pt.y) ? Math.round(pt.y * 100) / 100 : 0,
+    }));
+  } else if (['line', 'rectangle', 'circle', 'arrow'].includes(type)) {
+    sanitized.startX = Number.isFinite(rawObj.startX) ? Math.round(rawObj.startX * 100) / 100 : 0;
+    sanitized.startY = Number.isFinite(rawObj.startY) ? Math.round(rawObj.startY * 100) / 100 : 0;
+    sanitized.endX = Number.isFinite(rawObj.endX) ? Math.round(rawObj.endX * 100) / 100 : 0;
+    sanitized.endY = Number.isFinite(rawObj.endY) ? Math.round(rawObj.endY * 100) / 100 : 0;
+  } else if (type === 'text') {
+    sanitized.x = Number.isFinite(rawObj.x) ? Math.round(rawObj.x * 100) / 100 : 0;
+    sanitized.y = Number.isFinite(rawObj.y) ? Math.round(rawObj.y * 100) / 100 : 0;
+    sanitized.text = typeof rawObj.text === 'string' ? rawObj.text.slice(0, 500) : '';
+    sanitized.fontSize =
+      Number.isFinite(rawObj.fontSize) && rawObj.fontSize >= 8 && rawObj.fontSize <= 96
+        ? Number(rawObj.fontSize)
+        : 16;
+  }
+
+  return sanitized;
+}
+
 /**
  * Configure and initialize Socket.IO server with authentication and collaborative Yjs events.
  */
@@ -147,6 +209,12 @@ export function initSocketServer(io) {
           isOwner: dbRoom.isCreator(socket.user._id),
         });
 
+        // Send initial whiteboard state to newly joined client
+        const initialWhiteboard = roomManager.getWhiteboardObjects(cleanRoomId);
+        socket.emit('whiteboard:initial-state', {
+          objects: initialWhiteboard,
+        });
+
         // Notify client of successful room join
         socket.emit('room:ready', {
           room: dbRoom.toSafeObject(socket.user._id),
@@ -229,7 +297,101 @@ export function initSocketServer(io) {
       }
     });
 
-    // ── 5. Room Leave ─────────────────────────────────────────
+    // ── 5. Real-Time Collaborative Whiteboard ────────────────
+    const handleWhiteboardCreate = async ({ roomId, object }) => {
+      try {
+        if (!socket.currentRoomId || socket.currentRoomId !== roomId) return;
+
+        const dbRoom = await Room.findOne({ roomId }).select('status');
+        if (!dbRoom) return;
+
+        if (dbRoom.status === 'ended') {
+          return socket.emit('whiteboard:error', {
+            message: 'This session has ended. Whiteboard is in read-only mode.',
+          });
+        }
+
+        const sanitized = sanitizeWhiteboardObject(object, socket.user);
+        if (!sanitized) return;
+
+        const added = roomManager.addOrUpdateWhiteboardObject(roomId, sanitized);
+        if (added) {
+          // Broadcast to all OTHER clients in the room (prevent echo)
+          socket.to(roomId).emit('whiteboard:object-create', { object: sanitized });
+          roomManager.scheduleWhiteboardSave(roomId, io);
+        }
+      } catch (err) {
+        console.error('Error on whiteboard:object-create:', err.message);
+      }
+    };
+
+    socket.on('whiteboard:object-create', handleWhiteboardCreate);
+    socket.on('whiteboard:draw', handleWhiteboardCreate);
+
+    socket.on('whiteboard:object-update', async ({ roomId, object }) => {
+      try {
+        if (!socket.currentRoomId || socket.currentRoomId !== roomId) return;
+
+        const dbRoom = await Room.findOne({ roomId }).select('status');
+        if (!dbRoom || dbRoom.status === 'ended') return;
+
+        const sanitized = sanitizeWhiteboardObject(object, socket.user);
+        if (!sanitized) return;
+
+        const updated = roomManager.addOrUpdateWhiteboardObject(roomId, sanitized);
+        if (updated) {
+          socket.to(roomId).emit('whiteboard:object-update', { object: sanitized });
+          roomManager.scheduleWhiteboardSave(roomId, io);
+        }
+      } catch (err) {
+        console.error('Error on whiteboard:object-update:', err.message);
+      }
+    });
+
+    socket.on('whiteboard:object-delete', async ({ roomId, objectId }) => {
+      try {
+        if (!socket.currentRoomId || socket.currentRoomId !== roomId) return;
+        if (!objectId || typeof objectId !== 'string') return;
+
+        const dbRoom = await Room.findOne({ roomId }).select('status');
+        if (!dbRoom || dbRoom.status === 'ended') return;
+
+        roomManager.deleteWhiteboardObject(roomId, objectId);
+        socket.to(roomId).emit('whiteboard:object-delete', { objectId });
+        roomManager.scheduleWhiteboardSave(roomId, io);
+      } catch (err) {
+        console.error('Error on whiteboard:object-delete:', err.message);
+      }
+    });
+
+    socket.on('whiteboard:clear', async ({ roomId }) => {
+      try {
+        if (!socket.currentRoomId || socket.currentRoomId !== roomId) return;
+
+        const dbRoom = await Room.findOne({ roomId }).select('status');
+        if (!dbRoom || dbRoom.status === 'ended') return;
+
+        roomManager.clearWhiteboard(roomId);
+        socket.to(roomId).emit('whiteboard:clear', { clearedBy: socket.user.name });
+        roomManager.scheduleWhiteboardSave(roomId, io);
+      } catch (err) {
+        console.error('Error on whiteboard:clear:', err.message);
+      }
+    });
+
+    socket.on('whiteboard:cursor', ({ roomId, x, y }) => {
+      if (!socket.currentRoomId || socket.currentRoomId !== roomId) return;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+      socket.to(roomId).emit('whiteboard:cursor', {
+        userId: socket.user._id.toString(),
+        userName: socket.user.name,
+        x,
+        y,
+      });
+    });
+
+    // ── 6. Room Leave ─────────────────────────────────────────
     socket.on('room:leave', ({ roomId }) => {
       if (socket.currentRoomId === roomId) {
         socket.leave(roomId);
