@@ -64,6 +64,12 @@ export default function Navbar() {
         {/* ── Desktop actions ──────────────────────────────── */}
         <div className="hidden md:flex items-center gap-3">
           <Link
+            to="/dashboard"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-accent bg-accent/10 border border-accent/20 hover:bg-accent/20 transition"
+          >
+            Workspace
+          </Link>
+          <Link
             to="/login"
             className="rounded-lg px-4 py-2 text-sm font-medium text-text-muted transition hover:text-text hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           >
@@ -106,6 +112,13 @@ export default function Navbar() {
             </a>
           ))}
           <div className="pt-3 mt-3 border-t border-white/[0.06] space-y-2">
+            <Link
+              to="/dashboard"
+              onClick={() => setMobileOpen(false)}
+              className="block rounded-lg px-4 py-2 text-xs font-semibold text-accent bg-accent/10 border border-accent/20 text-center"
+            >
+              Workspace (Demo)
+            </Link>
             <Link
               to="/login"
               onClick={() => setMobileOpen(false)}

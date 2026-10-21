@@ -236,6 +236,17 @@ export default function Login() {
             )}
           </button>
         </div>
+
+        {/* Demo workspace shortcut */}
+        <div className="pt-1">
+          <Link
+            to="/dashboard"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-surface-light/40 hover:bg-surface-light hover:border-white/[0.14] px-4 py-2.5 text-xs font-medium text-text-muted hover:text-text transition"
+          >
+            <span>Explore Demo Workspace as Guest</span>
+            <ArrowRight className="h-3.5 w-3.5 text-primary-light" />
+          </Link>
+        </div>
       </form>
 
       {/* Switch to signup */}
