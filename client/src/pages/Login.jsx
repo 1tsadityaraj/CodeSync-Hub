@@ -1,12 +1,19 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Mail, Lock, LogIn, ArrowRight, Info, AlertCircle } from 'lucide-react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Mail, Lock, LogIn, ArrowRight, AlertCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import AuthLayout from '../components/auth/AuthLayout';
 import FormInput from '../components/auth/FormInput';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const from = location.state?.from?.pathname || '/dashboard';
+
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -16,7 +23,7 @@ export default function Login() {
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitNotice, setSubmitNotice] = useState(null);
+  const [serverError, setServerError] = useState('');
   const [forgotPasswordNotice, setForgotPasswordNotice] = useState(false);
 
   const validateField = (name, value) => {
@@ -39,10 +46,9 @@ export default function Login() {
 
     setFormData((prev) => ({ ...prev, [name]: fieldValue }));
 
-    // Reset notification if user types
-    if (submitNotice) setSubmitNotice(null);
+    // Reset server error if user edits inputs
+    if (serverError) setServerError('');
 
-    // Validate on change if field was already touched
     if (touched[name] && type !== 'checkbox') {
       const err = validateField(name, fieldValue);
       setErrors((prev) => ({ ...prev, [name]: err }));
@@ -56,10 +62,9 @@ export default function Login() {
     setErrors((prev) => ({ ...prev, [name]: err }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Mark all as touched
     setTouched({ email: true, password: true });
 
     const emailErr = validateField('email', formData.email);
@@ -76,19 +81,23 @@ export default function Login() {
       return;
     }
 
-    // Client-side validation succeeded!
     setIsSubmitting(true);
-    setSubmitNotice(null);
+    setServerError('');
 
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setSubmitNotice({
-        type: 'info',
-        title: 'Backend Authentication Pending',
-        message:
-          'Client-side validation passed! Backend authentication (MongoDB + JWT) is scheduled for the upcoming implementation step. No credentials were sent or stored.',
+    try {
+      await login({
+        email: formData.email,
+        password: formData.password,
       });
-    }, 600);
+
+      // On success, redirect to intended target or /dashboard
+      navigate(from, { replace: true });
+    } catch (err) {
+      // Preserves entered email while clearing password if invalid
+      setServerError(err.message || 'Login failed. Please check your credentials.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleForgotPassword = (e) => {
@@ -101,17 +110,17 @@ export default function Login() {
       title="Welcome back"
       subtitle="Sign in to your CodeSync Hub account to access your rooms and collaborate"
     >
-      {/* Submission status notice */}
-      {submitNotice && (
+      {/* Server Error Alert */}
+      {serverError && (
         <div
-          role="status"
-          className="mb-6 rounded-xl border border-primary/25 bg-primary/[0.08] p-4 text-xs leading-relaxed text-text transition-all"
+          role="alert"
+          className="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-4 text-xs leading-relaxed text-text transition-all animate-fadeIn"
         >
           <div className="flex items-start gap-2.5">
-            <Info className="h-4 w-4 text-primary-light shrink-0 mt-0.5" />
+            <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-primary-light text-xs mb-1">{submitNotice.title}</p>
-              <p className="text-text-muted">{submitNotice.message}</p>
+              <p className="font-semibold text-rose-400 text-xs mb-0.5">Authentication Failed</p>
+              <p className="text-text-muted">{serverError}</p>
             </div>
           </div>
         </div>
@@ -225,7 +234,7 @@ export default function Login() {
                     d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
                   />
                 </svg>
-                Validating...
+                Signing In...
               </span>
             ) : (
               <>
@@ -235,17 +244,6 @@ export default function Login() {
               </>
             )}
           </button>
-        </div>
-
-        {/* Demo workspace shortcut */}
-        <div className="pt-1">
-          <Link
-            to="/dashboard"
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-surface-light/40 hover:bg-surface-light hover:border-white/[0.14] px-4 py-2.5 text-xs font-medium text-text-muted hover:text-text transition"
-          >
-            <span>Explore Demo Workspace as Guest</span>
-            <ArrowRight className="h-3.5 w-3.5 text-primary-light" />
-          </Link>
         </div>
       </form>
 

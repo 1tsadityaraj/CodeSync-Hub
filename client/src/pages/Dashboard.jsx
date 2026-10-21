@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Sparkles, Video, History, Settings as SettingsIcon, Shield, Moon } from 'lucide-react';
+import { Sparkles, Shield, Moon } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../components/dashboard/DashboardLayout';
 import StatsCards from '../components/dashboard/StatsCards';
 import QuickActionCards from '../components/dashboard/QuickActionCards';
@@ -8,6 +9,7 @@ import GettingStartedGuide from '../components/dashboard/GettingStartedGuide';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
+  const { user } = useAuth();
 
   return (
     <DashboardLayout activeTab={activeTab} onTabChange={setActiveTab}>
@@ -26,14 +28,14 @@ export default function Dashboard() {
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
-                Welcome to your{' '}
+                Welcome back,{' '}
                 <span className="bg-gradient-to-r from-primary via-primary-light to-accent bg-clip-text text-transparent">
-                  coding workspace.
+                  {user?.name ? user.name.split(' ')[0] : 'Developer'}!
                 </span>
               </h1>
 
               <p className="mt-2 text-sm text-text-muted leading-relaxed">
-                Create a room or join your team to start collaborating in real time with audio, video, and code execution.
+                Create an interview room or join your team to start collaborating in real time with audio, video, and code execution.
               </p>
             </div>
           </div>
@@ -90,27 +92,27 @@ export default function Dashboard() {
           <div className="rounded-2xl border border-white/[0.08] bg-surface/75 p-6 space-y-4 backdrop-blur-xl">
             <h3 className="text-sm font-semibold text-text flex items-center gap-2">
               <Shield className="h-4 w-4 text-primary-light" />
-              Demo Account Profile
+              Account Profile
             </h3>
 
             <div className="grid gap-4 sm:grid-cols-2 text-xs">
               <div>
                 <label className="text-text-muted/70 block mb-1">Display Name</label>
-                <div className="bg-surface-light px-3.5 py-2.5 rounded-xl border border-white/[0.06] text-text font-medium">
-                  Aditya Raj
+                <div className="bg-surface-light px-3.5 py-2.5 rounded-xl border border-white/[0.06] text-text font-medium truncate">
+                  {user?.name || 'Developer'}
                 </div>
               </div>
 
               <div>
                 <label className="text-text-muted/70 block mb-1">Email Address</label>
-                <div className="bg-surface-light px-3.5 py-2.5 rounded-xl border border-white/[0.06] text-text font-medium">
-                  aditya@example.com
+                <div className="bg-surface-light px-3.5 py-2.5 rounded-xl border border-white/[0.06] text-text font-medium truncate">
+                  {user?.email || 'user@example.com'}
                 </div>
               </div>
             </div>
 
             <p className="text-[11px] text-text-muted/70 pt-2 border-t border-white/[0.06]">
-              Note: Account profile editing and persistent avatar uploads will be enabled upon connecting MongoDB user models.
+              Member since {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'recent'}. Account authenticated with JWT.
             </p>
           </div>
 

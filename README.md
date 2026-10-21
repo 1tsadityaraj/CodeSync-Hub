@@ -6,20 +6,32 @@
 
 ```
 CodeSync Hub/
-├── client/          # React + Vite frontend
+├── client/                   # React + Vite frontend
 │   ├── src/
-│   │   ├── lib/     # Shared utilities (API client, etc.)
-│   │   ├── pages/   # Route-level page components
-│   │   ├── App.jsx
+│   │   ├── components/       # Reusable UI, navbar, hero, dashboard, auth
+│   │   │   ├── auth/         # AuthLayout, FormInput, ProtectedRoute
+│   │   │   └── dashboard/    # DashboardLayout, QuickActions, StatsCards, RecentSessions
+│   │   ├── context/          # AuthContext (state, login, register, session restore)
+│   │   ├── lib/              # API fetch client (credentials & token management)
+│   │   ├── pages/            # Home, Login, Signup, Dashboard, Room
+│   │   ├── App.jsx           # App routes & ProtectedRoute wrappers
 │   │   ├── main.jsx
-│   │   └── index.css
+│   │   └── index.css         # Tailwind v4 theme & base resets
 │   ├── .env.example
 │   ├── index.html
-│   ├── vite.config.js
+│   ├── vite.config.js        # Tailwind v4 plugin + /api proxy to :5001
 │   └── package.json
-├── server/          # Express.js API backend
+├── server/                   # Express.js REST API & MongoDB
 │   ├── src/
-│   │   └── index.js
+│   │   ├── config/           # MongoDB connection with Mongoose
+│   │   ├── controllers/      # authController (register, login, getMe, logout)
+│   │   ├── middleware/       # authMiddleware (JWT), errorMiddleware, rateLimitMiddleware
+│   │   ├── models/           # User schema (bcrypt hashing, email normalization, safe serialization)
+│   │   ├── routes/           # authRoutes (/register, /login, /me, /logout)
+│   │   ├── app.js            # Express app with Helmet, CORS, cookies, rate limiting
+│   │   ├── server.js         # HTTP server startup & graceful shutdown
+│   │   └── index.js          # Main entrypoint
+│   ├── test/                 # Automated auth test suite
 │   ├── .env.example
 │   └── package.json
 ├── .gitignore
@@ -32,51 +44,102 @@ CodeSync Hub/
 | ------- | -------- |
 | Node.js | ≥ 18     |
 | npm     | ≥ 9      |
-| MongoDB | ≥ 6 (needed in later steps) |
+| MongoDB | MongoDB Atlas (Cloud) or local MongoDB ≥ 6 |
 
-## Getting Started
+---
 
-### 1. Clone the repository
+## Setting Up MongoDB Atlas
+
+1. **Create an account:** Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) and sign up / log in.
+2. **Build a cluster:** Create a free **M0 Sandbox** cluster (choose your preferred cloud provider and region).
+3. **Database Access (User):**
+   - In Atlas left navigation, click **Database Access** under *Security*.
+   - Click **Add New Database User**.
+   - Choose **Password** authentication.
+   - Enter a username (e.g. `codesync_admin`) and generate a secure password.
+   - Under *Database User Privileges*, grant **Read and write to any database**.
+   - Click **Add User**.
+4. **Network Access (IP Whitelist):**
+   - Click **Network Access** under *Security*.
+   - Click **Add IP Address**.
+   - For development, select **Allow Access from Anywhere** (`0.0.0.0/0`) or enter your current IP.
+   - Click **Confirm**.
+5. **Get Connection String:**
+   - In **Database Deployments**, click **Connect** on your cluster.
+   - Choose **Drivers** (Node.js).
+   - Copy the connection string format:
+     ```
+     mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/codesync-hub?retryWrites=true&w=majority
+     ```
+   - Replace `<username>` and `<password>` with the database credentials created in Step 3.
+   - Add this value to your `server/.env` as `MONGODB_URI`.
+
+---
+
+## Getting Started Locally
+
+### 1. Backend Setup
 
 ```bash
-git clone <your-repo-url>
-cd "CodeSync Hub"
-```
+cd "CodeSync Hub/server"
 
-### 2. Set up the backend
+# Create .env from template
+cp .env.example .env
 
-```bash
-cd server
-cp .env.example .env   # then edit .env with your real values
+# Edit .env and fill in:
+# MONGODB_URI=your_atlas_connection_string
+# JWT_SECRET=your_random_secret_string
+
+# Install dependencies
 npm install
+
+# Run automated auth test suite (runs with in-memory Mongo, no Atlas needed)
+npm test
+
+# Start the dev server
 npm run dev
 ```
 
-The API server will start on **http://localhost:5001**.  
-Verify it's running:
+The API server runs on **http://localhost:5001** (or port 5000 if AirPlay is disabled).  
+Check health status:
 
 ```bash
 curl http://localhost:5001/api/health
 ```
 
-### 3. Set up the frontend
+### 2. Frontend Setup
 
-Open a **new terminal**:
+In a separate terminal:
 
 ```bash
-cd client
-cp .env.example .env   # optional — defaults work for local dev
+cd "CodeSync Hub/client"
+
+# Install dependencies
 npm install
+
+# Start Vite dev server
 npm run dev
 ```
 
-The frontend will start on **http://localhost:5173**.  
-API requests to `/api/*` are automatically proxied to the backend during development.
+Open **http://localhost:5173** in your browser.  
+Requests to `/api/*` are automatically proxied to the backend on `:5001`.
+
+---
+
+## Authentication Features
+
+- **Secure Password Hashing:** Uses `bcryptjs` with salt rounds 10. Passwords are never stored in plaintext and never returned in API responses.
+- **Dual Token Strategy:** Issues standard JWTs stored in **HTTP-only, secure-in-production cookies** (`SameSite: lax/none`) while also supporting `Authorization: Bearer <token>` headers.
+- **Rate Limiting:** Protects `/api/auth/register` and `/api/auth/login` against brute force and credential stuffing attacks via `express-rate-limit`.
+- **Protected Routes:** `/dashboard` and `/room/:roomId` require authentication. Unauthenticated requests automatically redirect to `/login`.
+- **Session Restoration:** On refresh, the client verifies authentication state via `GET /api/auth/me`.
+- **Account Enumeration Defense:** Login failures return generic *"Invalid email or password"* responses.
+
+---
 
 ## Available Scripts
 
 ### Client (`client/`)
-
 | Command           | Description                  |
 | ----------------- | ---------------------------- |
 | `npm run dev`     | Start Vite dev server        |
@@ -85,32 +148,24 @@ API requests to `/api/*` are automatically proxied to the backend during develop
 | `npm run lint`    | Run linter                   |
 
 ### Server (`server/`)
-
 | Command           | Description                          |
 | ----------------- | ------------------------------------ |
-| `npm run dev`     | Start with auto-restart (--watch)    |
+| `npm run dev`     | Start with auto-restart (`--watch`)  |
 | `npm start`       | Start in production mode             |
+| `npm test`        | Run automated auth verification suite|
 
-## Environment Variables
-
-See the `.env.example` files in each directory for the full list of required variables.
-
-> ⚠️ **Never commit `.env` files.** They are excluded via `.gitignore`.
+---
 
 ## Tech Stack
 
-| Layer            | Technology                     |
-| ---------------- | ------------------------------ |
-| Frontend         | React 19, Vite 8, Tailwind v4  |
-| Routing          | React Router                   |
-| Icons            | Lucide React                   |
-| Code Editor      | Monaco Editor (coming soon)    |
-| Backend          | Node.js, Express 5             |
-| Database         | MongoDB + Mongoose             |
-| Real-time        | Socket.IO                      |
-| Auth             | JWT + bcrypt                   |
-| Video            | WebRTC                         |
-| Code Execution   | Judge0 API                     |
+| Layer            | Technology                                |
+| ---------------- | ----------------------------------------- |
+| Frontend         | React 19, Vite 8, Tailwind v4, React Router |
+| State            | React Context (`AuthContext`)             |
+| Icons            | Lucide React                              |
+| Backend          | Node.js, Express 5, Helmet, CORS          |
+| Security         | JWT, bcryptjs, express-rate-limit         |
+| Database         | MongoDB Atlas with Mongoose               |
 
 ## License
 

@@ -12,9 +12,9 @@ import {
   ChevronDown,
   Sparkles,
   ExternalLink,
-  User,
   ShieldCheck,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -26,12 +26,29 @@ const NAV_ITEMS = [
 export default function DashboardLayout({ children, activeTab = 'overview', onTabChange }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const handleTabClick = (tabId) => {
     if (onTabChange) onTabChange(tabId);
     setMobileSidebarOpen(false);
   };
+
+  const handleSignOut = async () => {
+    setProfileOpen(false);
+    await logout();
+    navigate('/login');
+  };
+
+  const initials = user?.name
+    ? user.name
+        .split(' ')
+        .filter(Boolean)
+        .map((part) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : 'U';
 
   return (
     <div className="min-h-screen bg-bg text-text flex">
@@ -71,13 +88,13 @@ export default function DashboardLayout({ children, activeTab = 'overview', onTa
           </button>
         </div>
 
-        {/* Demo Mode Badge */}
+        {/* Authenticated Account Badge */}
         <div className="px-4 pt-4">
           <div className="flex items-center gap-2 rounded-xl bg-primary/[0.07] border border-primary/20 px-3 py-2 text-xs">
             <Sparkles className="h-3.5 w-3.5 text-primary-light shrink-0" />
             <div className="flex-1 truncate">
-              <p className="font-semibold text-primary-light">Demo Workspace</p>
-              <p className="text-[11px] text-text-muted truncate">Guest Mode Enabled</p>
+              <p className="font-semibold text-primary-light truncate">{user?.name || 'Authenticated User'}</p>
+              <p className="text-[11px] text-text-muted truncate">{user?.email || 'Active Workspace'}</p>
             </div>
           </div>
         </div>
@@ -117,11 +134,11 @@ export default function DashboardLayout({ children, activeTab = 'overview', onTa
           </Link>
 
           <button
-            onClick={() => navigate('/login')}
+            onClick={handleSignOut}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/[0.08] transition text-left"
           >
             <LogOut className="h-3.5 w-3.5" />
-            Exit Workspace
+            Sign Out
           </button>
         </div>
       </aside>
@@ -157,11 +174,11 @@ export default function DashboardLayout({ children, activeTab = 'overview', onTa
               aria-expanded={profileOpen}
             >
               <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-primary to-accent flex items-center justify-center text-xs font-bold text-white shadow-sm">
-                AR
+                {initials}
               </div>
               <div className="text-left hidden sm:block">
-                <p className="text-xs font-semibold text-text leading-tight">Aditya Raj</p>
-                <p className="text-[10px] text-primary-light">demo_user</p>
+                <p className="text-xs font-semibold text-text leading-tight">{user?.name || 'Developer'}</p>
+                <p className="text-[10px] text-primary-light truncate max-w-[120px]">{user?.email || 'Active'}</p>
               </div>
               <ChevronDown className="h-3.5 w-3.5 text-text-muted hidden sm:block" />
             </button>
@@ -175,10 +192,10 @@ export default function DashboardLayout({ children, activeTab = 'overview', onTa
                 />
                 <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-white/[0.08] bg-surface/95 backdrop-blur-xl p-2 shadow-2xl z-50 animate-fadeIn">
                   <div className="px-3 py-2 border-b border-white/[0.06] mb-1">
-                    <p className="text-xs font-semibold text-text">Aditya Raj</p>
-                    <p className="text-[11px] text-text-muted truncate">aditya@example.com</p>
+                    <p className="text-xs font-semibold text-text">{user?.name || 'Developer'}</p>
+                    <p className="text-[11px] text-text-muted truncate">{user?.email || 'Active'}</p>
                     <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-medium text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
-                      <ShieldCheck className="h-3 w-3" /> Demo Account
+                      <ShieldCheck className="h-3 w-3" /> Authenticated
                     </span>
                   </div>
 
@@ -205,14 +222,11 @@ export default function DashboardLayout({ children, activeTab = 'overview', onTa
                   <div className="my-1 border-t border-white/[0.06]" />
 
                   <button
-                    onClick={() => {
-                      setProfileOpen(false);
-                      navigate('/login');
-                    }}
+                    onClick={handleSignOut}
                     className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/[0.08] transition text-left"
                   >
                     <LogOut className="h-3.5 w-3.5" />
-                    Sign Out (Demo)
+                    Sign Out
                   </button>
                 </div>
               </>

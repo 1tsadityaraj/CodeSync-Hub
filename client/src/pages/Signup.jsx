@@ -1,12 +1,16 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { User, Mail, Lock, UserPlus, ArrowRight, Info, CheckCircle2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { User, Mail, Lock, UserPlus, ArrowRight, AlertCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import AuthLayout from '../components/auth/AuthLayout';
 import FormInput from '../components/auth/FormInput';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Signup() {
+  const { register } = useAuth();
+  const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -18,7 +22,7 @@ export default function Signup() {
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitNotice, setSubmitNotice] = useState(null);
+  const [serverError, setServerError] = useState('');
 
   const validateField = (name, value, allValues = formData) => {
     switch (name) {
@@ -53,14 +57,13 @@ export default function Signup() {
 
     setFormData(updatedForm);
 
-    if (submitNotice) setSubmitNotice(null);
+    if (serverError) setServerError('');
 
     if (touched[name]) {
       const err = validateField(name, fieldValue, updatedForm);
       setErrors((prev) => ({ ...prev, [name]: err }));
     }
 
-    // Also revalidate confirmPassword if password is being edited
     if (name === 'password' && touched.confirmPassword) {
       const confirmErr = validateField('confirmPassword', formData.confirmPassword, updatedForm);
       setErrors((prev) => ({ ...prev, confirmPassword: confirmErr }));
@@ -75,7 +78,7 @@ export default function Signup() {
     setErrors((prev) => ({ ...prev, [name]: err }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     setTouched({
@@ -99,19 +102,24 @@ export default function Signup() {
     const hasErrors = Object.values(newErrors).some(Boolean);
     if (hasErrors) return;
 
-    // Client-side validation succeeded!
     setIsSubmitting(true);
-    setSubmitNotice(null);
+    setServerError('');
 
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setSubmitNotice({
-        type: 'info',
-        title: 'Backend Registration Pending',
-        message:
-          'All signup fields validated successfully! Backend database models and JWT user registration will be connected in a subsequent step. No account was stored.',
+    try {
+      await register({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        confirmPassword: formData.confirmPassword,
       });
-    }, 600);
+
+      // On successful registration, redirect straight to /dashboard
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      setServerError(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -119,17 +127,17 @@ export default function Signup() {
       title="Create your account"
       subtitle="Start collaborating, holding technical interviews, and writing code together"
     >
-      {/* Submission status notice */}
-      {submitNotice && (
+      {/* Server Error Alert */}
+      {serverError && (
         <div
-          role="status"
-          className="mb-6 rounded-xl border border-primary/25 bg-primary/[0.08] p-4 text-xs leading-relaxed text-text transition-all"
+          role="alert"
+          className="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-4 text-xs leading-relaxed text-text transition-all animate-fadeIn"
         >
           <div className="flex items-start gap-2.5">
-            <Info className="h-4 w-4 text-primary-light shrink-0 mt-0.5" />
+            <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-primary-light text-xs mb-1">{submitNotice.title}</p>
-              <p className="text-text-muted">{submitNotice.message}</p>
+              <p className="font-semibold text-rose-400 text-xs mb-0.5">Registration Failed</p>
+              <p className="text-text-muted">{serverError}</p>
             </div>
           </div>
         </div>

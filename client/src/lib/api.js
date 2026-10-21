@@ -1,32 +1,145 @@
 /**
- * Base URL for all API requests.
- *
- * In development the Vite dev-server proxy forwards /api to the Express
- * backend, so an empty string works.  In production the env var
- * VITE_API_BASE_URL should point to the deployed backend origin
- * (e.g. https://codesync-hub-api.onrender.com).
+ * Base URL configuration for CodeSync Hub API.
+ * Supports:
+ * - VITE_API_URL (e.g. 'http://localhost:5001/api' or 'http://localhost:5001')
+ * - VITE_API_BASE_URL (legacy / deployment URL)
+ * - Empty string fallback (relies on Vite dev proxy `/api` in local development)
  */
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const rawApiUrl = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+
+export const API_BASE_URL = rawApiUrl;
 
 /**
- * Lightweight wrapper around fetch that prepends the API base URL and
- * defaults to JSON content-type.
+ * Token storage helper in memory (with localStorage as optional backup for Bearer token fallback).
+ * Note: When HTTP-only cookies are used, browser automatically manages the cookie.
  */
-export async function apiFetch(endpoint, options = {}) {
-  const url = `${API_BASE_URL}${endpoint}`;
+const TOKEN_KEY = 'codesync_auth_token';
 
-  const res = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
-  });
+export function getStoredToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || `API error ${res.status}`);
+export function setStoredToken(token) {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {
+    // Ignore storage errors in private browsing
+  }
+}
+
+export function removeStoredToken() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * Normalizes request endpoint URL.
+ */
+function resolveUrl(endpoint) {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+  if (!API_BASE_URL) {
+    return cleanEndpoint;
   }
 
-  return res.json();
+  // If base URL already ends with /api and endpoint starts with /api, avoid /api/api
+  if (API_BASE_URL.endsWith('/api') && cleanEndpoint.startsWith('/api/')) {
+    return `${API_BASE_URL}${cleanEndpoint.slice(4)}`;
+  }
+
+  return `${API_BASE_URL}${cleanEndpoint}`;
 }
+
+/**
+ * Lightweight HTTP client wrapper for fetch.
+ * Sends credentials (cookies) and Authorization Bearer header if token exists.
+ */
+export async function apiFetch(endpoint, options = {}) {
+  const url = resolveUrl(endpoint);
+  const token = getStoredToken();
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
+  const config = {
+    credentials: 'include', // Ensures HTTP-only cookies are sent across origins
+    ...options,
+    headers,
+  };
+
+  let res;
+  try {
+    res = await fetch(url, config);
+  } catch (netErr) {
+    throw new Error('Unable to connect to CodeSync Hub API. Please check if the server is running.');
+  }
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const errorMsg = data.message || `Request failed with status ${res.status}`;
+    const error = new Error(errorMsg);
+    error.status = res.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Dedicated Auth API services
+ */
+export const authApi = {
+  async register({ name, email, password, confirmPassword }) {
+    const data = await apiFetch('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password, confirmPassword }),
+    });
+    if (data.token) {
+      setStoredToken(data.token);
+    }
+    return data;
+  },
+
+  async login({ email, password }) {
+    const data = await apiFetch('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    if (data.token) {
+      setStoredToken(data.token);
+    }
+    return data;
+  },
+
+  async getMe() {
+    return apiFetch('/api/auth/me', {
+      method: 'GET',
+    });
+  },
+
+  async logout() {
+    try {
+      await apiFetch('/api/auth/logout', {
+        method: 'POST',
+      });
+    } finally {
+      removeStoredToken();
+    }
+  },
+};
