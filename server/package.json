@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "test": "node test/verifyAuth.js"
+    "test": "node test/verifyAuth.js && node test/verifyRooms.test.js",
+    "test:auth": "node test/verifyAuth.js",
+    "test:rooms": "node test/verifyRooms.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

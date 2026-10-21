@@ -1,50 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { History, Calendar, FileCode, CheckCircle2, Clock, AlertTriangle, ArrowUpRight, FolderOpen } from 'lucide-react';
+import {
+  Calendar,
+  FileCode,
+  Users,
+  ArrowUpRight,
+  FolderOpen,
+  RotateCw,
+  AlertCircle,
+  Tag,
+} from 'lucide-react';
+import { roomApi } from '../../lib/api';
 
-const INITIAL_MOCK_SESSIONS = [
-  {
-    id: 'cs-algo-9821',
-    title: 'Senior Frontend Architecture Round',
-    candidate: 'Sarah Jenkins',
-    date: 'Today, 2:30 PM',
-    language: 'JavaScript',
-    languageBadge: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
-    duration: '52 mins',
-    status: 'Completed',
-    statusBadge: 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20',
-  },
-  {
-    id: 'cs-tree-4412',
-    title: 'Binary Tree Inversion & BFS Pair Programming',
-    candidate: 'David Chen',
-    date: 'Yesterday, 11:00 AM',
-    language: 'Python',
-    languageBadge: 'bg-sky-400/10 text-sky-300 border-sky-400/20',
-    duration: '45 mins',
-    status: 'Completed',
-    statusBadge: 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20',
-  },
-  {
-    id: 'cs-sys-1092',
-    title: 'Distributed Rate Limiter Whiteboard Review',
-    candidate: 'Alex Rivera',
-    date: 'Oct 18, 2026',
-    language: 'TypeScript',
-    languageBadge: 'bg-blue-400/10 text-blue-300 border-blue-400/20',
-    duration: '60 mins',
-    status: 'Archived',
-    statusBadge: 'bg-white/[0.06] text-text-muted border-white/[0.1]',
-  },
-];
+const LANGUAGE_BADGES = {
+  javascript: 'bg-amber-400/10 text-amber-300 border-amber-400/20',
+  typescript: 'bg-blue-400/10 text-blue-300 border-blue-400/20',
+  python: 'bg-sky-400/10 text-sky-300 border-sky-400/20',
+  cpp: 'bg-rose-400/10 text-rose-300 border-rose-400/20',
+  java: 'bg-orange-400/10 text-orange-300 border-orange-400/20',
+  go: 'bg-cyan-400/10 text-cyan-300 border-cyan-400/20',
+  rust: 'bg-red-400/10 text-red-300 border-red-400/20',
+};
 
-export default function RecentSessions() {
-  const [sessions, setSessions] = useState(INITIAL_MOCK_SESSIONS);
+export default function RecentSessions({ refreshKey = 0 }) {
+  const [rooms, setRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const toggleEmptyState = () => {
-    setSessions((prev) => (prev.length > 0 ? [] : INITIAL_MOCK_SESSIONS));
-  };
+  const fetchRooms = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const data = await roomApi.getRooms({ limit: 20 });
+      setRooms(data.rooms || []);
+    } catch (err) {
+      setError(err.message || 'Failed to fetch interview rooms');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRooms();
+  }, [fetchRooms, refreshKey]);
 
   return (
     <div className="space-y-4">
@@ -52,94 +51,141 @@ export default function RecentSessions() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-text">Recent Interview Sessions</h3>
-            <span className="text-[10px] font-medium text-amber-300 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full">
-              Mock Data
+            <h3 className="text-sm font-semibold text-text">Your Interview Rooms</h3>
+            <span className="text-[10px] font-medium text-primary-light bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+              Live Database Records
             </span>
           </div>
           <p className="text-xs text-text-muted">
-            Simulated demonstration history. Real session logs will sync with MongoDB in later steps.
+            Rooms you have created or joined. Access the lobby to invite participants or manage the session.
           </p>
         </div>
 
-        {/* Empty state preview toggle */}
+        {/* Refresh button */}
         <button
           type="button"
-          onClick={toggleEmptyState}
-          className="self-start sm:self-auto text-xs font-medium text-text-muted hover:text-text border border-white/[0.08] hover:border-white/[0.15] bg-surface-light/40 hover:bg-surface-light px-3 py-1.5 rounded-lg transition"
+          onClick={fetchRooms}
+          disabled={loading}
+          className="self-start sm:self-auto inline-flex items-center gap-1.5 text-xs font-medium text-text-muted hover:text-text border border-white/[0.08] hover:border-white/[0.15] bg-surface-light/40 hover:bg-surface-light px-3 py-1.5 rounded-lg transition disabled:opacity-60"
         >
-          {sessions.length > 0 ? 'Preview Empty State' : 'Restore Demo Sessions'}
+          <RotateCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-primary-light' : ''}`} />
+          <span>Refresh</span>
         </button>
       </div>
 
+      {/* Error state */}
+      {error && (
+        <div className="rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3.5 text-xs text-rose-400 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
       {/* Content */}
-      {sessions.length === 0 ? (
+      {loading && rooms.length === 0 ? (
+        /* Loading skeleton */
+        <div className="rounded-2xl border border-white/[0.08] bg-surface/75 p-6 space-y-4 animate-pulse">
+          <div className="h-4 bg-white/[0.06] rounded w-1/3" />
+          <div className="h-10 bg-white/[0.04] rounded" />
+          <div className="h-10 bg-white/[0.04] rounded" />
+        </div>
+      ) : rooms.length === 0 ? (
         /* Empty State */
         <div className="rounded-2xl border border-dashed border-white/[0.1] bg-surface/30 p-10 text-center flex flex-col items-center justify-center space-y-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.04] text-text-muted">
             <FolderOpen className="h-6 w-6" />
           </div>
-          <h4 className="text-sm font-semibold text-text">No Recent Sessions Recorded</h4>
+          <h4 className="text-sm font-semibold text-text">No Interview Rooms Yet</h4>
           <p className="text-xs text-text-muted max-w-sm leading-relaxed">
-            When you create rooms and conduct coding interviews, your saved sessions, code snapshots, and notes will appear here.
+            You haven&apos;t created or joined any collaborative sessions yet. Use the card above to spin up a new room in seconds!
           </p>
-          <button
-            type="button"
-            onClick={toggleEmptyState}
-            className="mt-2 text-xs font-medium text-primary-light hover:text-accent underline underline-offset-4"
-          >
-            Click here to restore sample session data
-          </button>
         </div>
       ) : (
-        /* Sessions Table / Cards */
+        /* Real Rooms List */
         <div className="rounded-2xl border border-white/[0.08] bg-surface/75 backdrop-blur-xl overflow-hidden shadow-lg">
           <div className="divide-y divide-white/[0.06]">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition hover:bg-white/[0.02]"
-              >
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-sm text-text">{session.title}</span>
-                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${session.statusBadge}`}>
-                      {session.status}
-                    </span>
-                    <span className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded-full border ${session.languageBadge}`}>
-                      {session.language}
-                    </span>
+            {rooms.map((room) => {
+              const langBadge =
+                LANGUAGE_BADGES[room.language?.toLowerCase()] ||
+                'bg-white/[0.06] text-text-muted border-white/[0.1]';
+
+              const isActive = room.status === 'active';
+
+              return (
+                <div
+                  key={room.id || room.roomId}
+                  className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition hover:bg-white/[0.02]"
+                >
+                  <div className="space-y-1.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-sm text-text truncate max-w-md">
+                        {room.title}
+                      </span>
+
+                      {/* Status badge */}
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ${
+                          isActive
+                            ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20'
+                            : 'bg-white/[0.06] text-text-muted border-white/[0.1]'
+                        }`}
+                      >
+                        {isActive && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                        {isActive ? 'Active' : 'Ended'}
+                      </span>
+
+                      {/* Language badge */}
+                      <span className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded-full border capitalize ${langBadge}`}>
+                        {room.language}
+                      </span>
+
+                      {/* Owner badge */}
+                      {room.isOwner && (
+                        <span className="text-[10px] font-medium bg-primary/10 text-primary-light border border-primary/20 px-2 py-0.5 rounded-full">
+                          Host
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
+                      <span className="flex items-center gap-1.5 font-mono text-[11px] text-accent">
+                        <FileCode className="h-3.5 w-3.5 text-accent/70" />
+                        {room.roomId}
+                      </span>
+
+                      <span className="flex items-center gap-1.5">
+                        <Users className="h-3.5 w-3.5 text-text-muted/60" />
+                        {room.participantCount || 1} participant{(room.participantCount || 1) > 1 ? 's' : ''}
+                      </span>
+
+                      <span className="flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 text-text-muted/60" />
+                        {room.createdAt ? new Date(room.createdAt).toLocaleDateString() : 'Recent'}
+                      </span>
+
+                      {room.creator?.name && (
+                        <span className="flex items-center gap-1.5 text-text-muted/70">
+                          <Tag className="h-3 w-3" />
+                          Creator: {room.creator.name}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
-                    <span className="flex items-center gap-1.5 font-mono text-[11px]">
-                      <FileCode className="h-3.5 w-3.5 text-text-muted/60" />
-                      {session.id}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5 text-text-muted/60" />
-                      {session.date}
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-text-muted/60" />
-                      {session.duration}
-                    </span>
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 sm:self-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/room/${room.roomId}`)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-text bg-primary/15 hover:bg-primary/25 border border-primary/30 px-3.5 py-1.5 rounded-lg transition"
+                    >
+                      <span>Enter Lobby</span>
+                      <ArrowUpRight className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
-
-                {/* Action */}
-                <div className="flex items-center gap-2 sm:self-center">
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/room/${session.id}`)}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-text-muted hover:text-text bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] px-3 py-1.5 rounded-lg transition"
-                  >
-                    <span>Re-open Room</span>
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

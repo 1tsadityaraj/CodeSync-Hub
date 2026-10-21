@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import mongoose from 'mongoose';
 
 import authRoutes from './routes/authRoutes.js';
+import roomRoutes from './routes/roomRoutes.js';
 import { notFoundHandler, errorHandler } from './middleware/errorMiddleware.js';
 
 const app = express();
@@ -69,6 +70,7 @@ app.get('/api/health', (_req, res) => {
 // API Routes
 // ---------------------------------------------------------------------------
 app.use('/api/auth', authRoutes);
+app.use('/api/rooms', roomRoutes);
 
 // ---------------------------------------------------------------------------
 // Error Handling

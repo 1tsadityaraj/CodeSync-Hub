@@ -9,7 +9,12 @@ import GettingStartedGuide from '../components/dashboard/GettingStartedGuide';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
+  const [refreshKey, setRefreshKey] = useState(0);
   const { user } = useAuth();
+
+  const handleRoomCreated = () => {
+    setRefreshKey((k) => k + 1);
+  };
 
   return (
     <DashboardLayout activeTab={activeTab} onTabChange={setActiveTab}>
@@ -41,7 +46,7 @@ export default function Dashboard() {
           </div>
 
           {/* Quick Action Cards (Create Room & Join Room) */}
-          <QuickActionCards />
+          <QuickActionCards onRoomCreated={handleRoomCreated} />
 
           {/* Stats Cards */}
           <StatsCards />
@@ -49,8 +54,8 @@ export default function Dashboard() {
           {/* Getting Started Guide */}
           <GettingStartedGuide />
 
-          {/* Recent Sessions */}
-          <RecentSessions />
+          {/* Real Rooms / Recent Sessions */}
+          <RecentSessions refreshKey={refreshKey} />
         </div>
       )}
 
@@ -62,7 +67,8 @@ export default function Dashboard() {
               Create and manage private collaborative interview sessions.
             </p>
           </div>
-          <QuickActionCards />
+          <QuickActionCards onRoomCreated={handleRoomCreated} />
+          <RecentSessions refreshKey={refreshKey} />
           <GettingStartedGuide />
         </div>
       )}
@@ -75,7 +81,7 @@ export default function Dashboard() {
               Review prior interview notes, shared code transcripts, and duration.
             </p>
           </div>
-          <RecentSessions />
+          <RecentSessions refreshKey={refreshKey} />
         </div>
       )}
 

@@ -143,3 +143,43 @@ export const authApi = {
     }
   },
 };
+
+/**
+ * Dedicated Room API services
+ */
+export const roomApi = {
+  async createRoom({ title, language }) {
+    return apiFetch('/api/rooms', {
+      method: 'POST',
+      body: JSON.stringify({ title, language }),
+    });
+  },
+
+  async getRooms(params = {}) {
+    const query = new URLSearchParams();
+    if (params.status) query.append('status', params.status);
+    if (params.limit) query.append('limit', params.limit);
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    return apiFetch(`/api/rooms${queryString}`, {
+      method: 'GET',
+    });
+  },
+
+  async getRoom(roomId) {
+    return apiFetch(`/api/rooms/${encodeURIComponent(roomId)}`, {
+      method: 'GET',
+    });
+  },
+
+  async joinRoom(roomId) {
+    return apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/join`, {
+      method: 'POST',
+    });
+  },
+
+  async endRoom(roomId) {
+    return apiFetch(`/api/rooms/${encodeURIComponent(roomId)}/end`, {
+      method: 'POST',
+    });
+  },
+};
