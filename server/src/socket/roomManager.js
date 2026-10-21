@@ -66,6 +66,7 @@ class RoomManager {
       isWhiteboardSaving: false,
       pendingWhiteboardSave: false,
       participants: new Map(),
+      callParticipants: new Map(),
       saveTimer: null,
       isSaving: false,
       pendingSave: false,
@@ -299,6 +300,9 @@ class RoomManager {
     if (!roomState) return [];
 
     roomState.participants.delete(socketId);
+    if (roomState.callParticipants) {
+      roomState.callParticipants.delete(socketId);
+    }
 
     // If no participants remain in room, flush pending changes to MongoDB
     if (roomState.participants.size === 0) {
@@ -331,12 +335,74 @@ class RoomManager {
   }
 
   /**
+   * Add active call participant (when user joins audio/video call).
+   */
+  addCallParticipant(roomId, socketId, user, mediaState = { audio: true, video: true }) {
+    const roomState = this.rooms.get(roomId);
+    if (!roomState) return null;
+
+    const participant = {
+      socketId,
+      userId: user._id?.toString() || user.id,
+      userName: user.name || 'Participant',
+      audio: mediaState?.audio !== false,
+      video: mediaState?.video !== false,
+      joinedAt: Date.now(),
+    };
+
+    roomState.callParticipants.set(socketId, participant);
+    return participant;
+  }
+
+  /**
+   * Get list of participants currently in the room's call.
+   */
+  getCallParticipants(roomId) {
+    const roomState = this.rooms.get(roomId);
+    if (!roomState) return [];
+    return Array.from(roomState.callParticipants.values());
+  }
+
+  /**
+   * Update audio/video status of a call participant.
+   */
+  updateCallMediaState(roomId, socketId, mediaState) {
+    const roomState = this.rooms.get(roomId);
+    if (!roomState) return null;
+
+    const participant = roomState.callParticipants.get(socketId);
+    if (!participant) return null;
+
+    if (typeof mediaState.audio === 'boolean') {
+      participant.audio = mediaState.audio;
+    }
+    if (typeof mediaState.video === 'boolean') {
+      participant.video = mediaState.video;
+    }
+
+    return participant;
+  }
+
+  /**
+   * Remove a participant from the room's call.
+   */
+  removeCallParticipant(roomId, socketId) {
+    const roomState = this.rooms.get(roomId);
+    if (!roomState) return null;
+
+    const removed = roomState.callParticipants.get(socketId);
+    roomState.callParticipants.delete(socketId);
+    return removed || null;
+  }
+
+  /**
    * Clean up room when ended
    */
   async destroyRoom(roomId) {
     await this.flush(roomId);
     const roomState = this.rooms.get(roomId);
     if (roomState) {
+      roomState.callParticipants.clear();
       roomState.doc.destroy();
       this.rooms.delete(roomId);
     }

@@ -20,6 +20,11 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
   const ytextRef = useRef(null);
   const bindingRef = useRef(null);
   const editorRef = useRef(null);
+  const onRoomErrorRef = useRef(onRoomError);
+
+  useEffect(() => {
+    onRoomErrorRef.current = onRoomError;
+  }, [onRoomError]);
 
   // Initialize Y.Doc and Socket.IO connection
   useEffect(() => {
@@ -37,10 +42,15 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
     setSocket(s);
 
     // Socket lifecycle events
-    s.on('connect', () => {
+    const onConnect = () => {
       setStatus('connected');
       s.emit('room:join', { roomId });
-    });
+    };
+
+    s.on('connect', onConnect);
+    if (s.connected) {
+      onConnect();
+    }
 
     s.on('disconnect', () => {
       setStatus('disconnected');
@@ -48,7 +58,7 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
 
     s.on('connect_error', (err) => {
       setStatus('disconnected');
-      if (onRoomError) onRoomError(err.message || 'Connection error');
+      if (onRoomErrorRef.current) onRoomErrorRef.current(err.message || 'Connection error');
     });
 
     s.io.on('reconnect_attempt', () => {
@@ -131,7 +141,7 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
     });
 
     s.on('room:error', (err) => {
-      if (onRoomError) onRoomError(err.message || 'Room error occurred');
+      if (onRoomErrorRef.current) onRoomErrorRef.current(err.message || 'Room error occurred');
     });
 
     // Cleanup on unmount or roomId change
@@ -155,7 +165,7 @@ export function useCollaboration({ roomId, initialLanguage = 'javascript', onRoo
       socketRef.current = null;
       setSocket(null);
     };
-  }, [roomId, onRoomError]);
+  }, [roomId]);
 
   /**
    * Bind Monaco editor instance with Yjs Text document

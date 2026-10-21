@@ -6,7 +6,12 @@ import { getStoredToken } from './api';
  * Relies on Vite proxy or explicit environment variable.
  */
 export function createSocketConnection() {
-  const socketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
+  const socketUrl =
+    import.meta.env.VITE_SOCKET_URL ||
+    (typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:5001'
+      : window.location.origin);
   const token = getStoredToken();
 
   const socket = io(socketUrl, {

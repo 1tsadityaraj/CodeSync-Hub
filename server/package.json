@@ -7,11 +7,12 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "test": "node test/verifyAuth.js && node test/verifyRooms.test.js && node test/verifyCollaboration.test.js && node test/verifyWhiteboard.test.js",
+    "test": "node test/verifyAuth.js && node test/verifyRooms.test.js && node test/verifyCollaboration.test.js && node test/verifyWhiteboard.test.js && node test/verifyVideoSignaling.test.js",
     "test:auth": "node test/verifyAuth.js",
     "test:rooms": "node test/verifyRooms.test.js",
     "test:collab": "node test/verifyCollaboration.test.js",
-    "test:whiteboard": "node test/verifyWhiteboard.test.js"
+    "test:whiteboard": "node test/verifyWhiteboard.test.js",
+    "test:video": "node test/verifyVideoSignaling.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

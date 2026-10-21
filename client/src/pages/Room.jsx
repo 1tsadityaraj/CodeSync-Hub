@@ -22,12 +22,15 @@ import {
   Download,
   PenTool,
   Columns,
+  Video,
 } from 'lucide-react';
 import { roomApi } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useCollaboration } from '../hooks/useCollaboration';
 import { useWhiteboard } from '../hooks/useWhiteboard';
+import { useWebRTC } from '../hooks/useWebRTC';
 import Whiteboard from '../components/whiteboard/Whiteboard';
+import VideoCallPanel from '../components/video/VideoCallPanel';
 
 const SUPPORTED_LANGUAGES = [
   { id: 'javascript', label: 'JavaScript', ext: 'js' },
@@ -52,6 +55,12 @@ export default function Room() {
   const [showRosterDropdown, setShowRosterDropdown] = useState(false);
   const [showInfoSidebar, setShowInfoSidebar] = useState(false);
   const [viewMode, setViewMode] = useState('split'); // 'code' | 'split' | 'whiteboard'
+  const [showVideoCall, setShowVideoCall] = useState(false);
+  const [isVideoCollapsed, setIsVideoCollapsed] = useState(false);
+
+  const handleRoomError = useCallback((errMsg) => {
+    console.warn('Collaboration error:', errMsg);
+  }, []);
 
   // Initialize collaborative Yjs & Socket.IO hook
   const {
@@ -67,9 +76,7 @@ export default function Room() {
   } = useCollaboration({
     roomId,
     initialLanguage: room?.language || 'javascript',
-    onRoomError: (errMsg) => {
-      console.warn('Collaboration error:', errMsg);
-    },
+    onRoomError: handleRoomError,
   });
 
   const isRoomActive = room?.status === 'active';
@@ -80,6 +87,14 @@ export default function Room() {
     roomId,
     isActive: isRoomActive,
     user,
+  });
+
+  // Initialize collaborative WebRTC video & audio call hook
+  const webrtc = useWebRTC({
+    socket,
+    roomId,
+    user,
+    isRoomActive,
   });
 
   /**
@@ -152,6 +167,10 @@ export default function Room() {
       )
     ) {
       return;
+    }
+
+    if (webrtc.isInCall) {
+      webrtc.leaveCall();
     }
 
     setIsEnding(true);
@@ -456,6 +475,31 @@ export default function Room() {
             )}
           </div>
 
+          {/* Video Call Trigger */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowVideoCall((prev) => !prev);
+              if (isVideoCollapsed) setIsVideoCollapsed(false);
+            }}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition shrink-0 ${
+              webrtc.isInCall
+                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400 shadow-sm'
+                : showVideoCall
+                ? 'bg-primary/20 border-primary/40 text-primary-light'
+                : 'border-white/[0.08] bg-surface-light/60 hover:bg-surface-light text-text'
+            }`}
+            title="Toggle Interview Video & Audio Call"
+          >
+            <Video className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">
+              {webrtc.isInCall ? `Call (${1 + webrtc.remotePeers.length})` : 'Video Call'}
+            </span>
+            {webrtc.isInCall && (
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            )}
+          </button>
+
           {/* Copy Link Button */}
           <button
             type="button"
@@ -601,7 +645,7 @@ export default function Room() {
             viewMode === 'code'
               ? 'flex-1 min-w-0'
               : viewMode === 'split'
-              ? 'w-full lg:w-1/2 min-w-0 border-r border-white/[0.08]'
+              ? 'flex-1 min-w-0 border-r border-white/[0.08]'
               : 'hidden'
           }`}
         >
@@ -649,7 +693,7 @@ export default function Room() {
             viewMode === 'whiteboard'
               ? 'flex-1 min-w-0'
               : viewMode === 'split'
-              ? 'hidden lg:flex lg:w-1/2 min-w-0'
+              ? 'hidden md:flex flex-1 min-w-0'
               : 'hidden'
           }`}
         >
@@ -662,6 +706,19 @@ export default function Room() {
             }
           />
         </div>
+
+        {/* Docked Video Call Panel */}
+        {showVideoCall && !isVideoCollapsed && (
+          <VideoCallPanel
+            webrtc={webrtc}
+            user={user}
+            roomId={roomId}
+            isCollapsed={false}
+            onToggleCollapse={() => setIsVideoCollapsed(true)}
+            copiedLink={copiedLink}
+            onCopyLink={() => copyToClipboard(inviteUrl, 'link')}
+          />
+        )}
 
         {/* Optional Collapsible Session Info Sidebar */}
         {showInfoSidebar && (
@@ -804,6 +861,22 @@ export default function Room() {
           </aside>
         )}
       </div>
+
+      {/* ── Floating Minimized Call Controls (when in active call and panel is collapsed) ── */}
+      {webrtc.isInCall && (isVideoCollapsed || !showVideoCall) && (
+        <VideoCallPanel
+          webrtc={webrtc}
+          user={user}
+          roomId={roomId}
+          isCollapsed={true}
+          onToggleCollapse={() => {
+            setShowVideoCall(true);
+            setIsVideoCollapsed(false);
+          }}
+          copiedLink={copiedLink}
+          onCopyLink={() => copyToClipboard(inviteUrl, 'link')}
+        />
+      )}
 
       {/* ── Status Bar at Bottom ──────────────────────────────── */}
       <footer className="h-7 shrink-0 border-t border-white/[0.08] bg-[#080b11] px-4 flex items-center justify-between text-[11px] text-text-muted font-mono z-30">

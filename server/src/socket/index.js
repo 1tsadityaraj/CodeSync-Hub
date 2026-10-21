@@ -391,9 +391,153 @@ export function initSocketServer(io) {
       });
     });
 
-    // ── 6. Room Leave ─────────────────────────────────────────
+    // ── 6. WebRTC Audio & Video Signaling ────────────────────
+    /**
+     * User joins active call in the current room
+     */
+    socket.on('call:join', async ({ roomId, mediaState = {} }) => {
+      try {
+        if (!socket.currentRoomId || socket.currentRoomId !== roomId) {
+          return socket.emit('call:error', { message: 'Must join room before joining call' });
+        }
+
+        const dbRoom = await Room.findOne({ roomId }).select('status participants');
+        if (!dbRoom || dbRoom.status === 'ended') {
+          return socket.emit('call:error', { message: 'Cannot join call in ended room' });
+        }
+
+        const audio = mediaState?.audio !== false;
+        const video = mediaState?.video !== false;
+
+        // Add to call participants
+        const newCallParticipant = roomManager.addCallParticipant(
+          roomId,
+          socket.id,
+          socket.user,
+          { audio, video }
+        );
+
+        // Get existing peers in the call (excluding current user)
+        const allCallPeers = roomManager.getCallParticipants(roomId);
+        const existingPeers = allCallPeers.filter((p) => p.socketId !== socket.id);
+
+        // Return list of active call peers to the joining socket
+        socket.emit('call:active-peers', {
+          peers: existingPeers,
+        });
+
+        // Notify existing peers that a new participant joined the call
+        socket.to(roomId).emit('call:peer-joined', {
+          peer: newCallParticipant,
+        });
+      } catch (err) {
+        console.error('Error on call:join:', err.message);
+        socket.emit('call:error', { message: 'Failed to join video call' });
+      }
+    });
+
+    /**
+     * WebRTC P2P Signaling Relay: Offer, Answer, ICE Candidate
+     */
+    socket.on('call:signal', ({ roomId, targetSocketId, signal }) => {
+      try {
+        if (!socket.currentRoomId || socket.currentRoomId !== roomId) {
+          return;
+        }
+
+        if (!targetSocketId || typeof targetSocketId !== 'string') {
+          return;
+        }
+
+        if (!signal || typeof signal !== 'object') {
+          return;
+        }
+
+        const { type } = signal;
+        if (!['offer', 'answer', 'ice-candidate'].includes(type)) {
+          return;
+        }
+
+        // Limit payload size (< 64KB)
+        const jsonStr = JSON.stringify(signal);
+        if (jsonStr.length > 65536) {
+          return;
+        }
+
+        // Verify targetSocketId is in the same room's call participants
+        const callPeers = roomManager.getCallParticipants(roomId);
+        const targetInCall = callPeers.some((p) => p.socketId === targetSocketId);
+        if (!targetInCall) {
+          return;
+        }
+
+        // Forward signaling packet directly to recipient
+        io.to(targetSocketId).emit('call:signal', {
+          fromSocketId: socket.id,
+          fromUser: {
+            id: socket.user._id.toString(),
+            name: socket.user.name,
+          },
+          signal,
+        });
+      } catch (err) {
+        console.error('Error on call:signal:', err.message);
+      }
+    });
+
+    /**
+     * Audio/Video Media State Toggle (Mute/Unmute Mic, Enable/Disable Camera)
+     */
+    socket.on('call:media-toggle', ({ roomId, audio, video }) => {
+      try {
+        if (!socket.currentRoomId || socket.currentRoomId !== roomId) {
+          return;
+        }
+
+        const updated = roomManager.updateCallMediaState(roomId, socket.id, { audio, video });
+        if (updated) {
+          socket.to(roomId).emit('call:peer-media-toggle', {
+            peerId: socket.id,
+            audio: updated.audio,
+            video: updated.video,
+          });
+        }
+      } catch (err) {
+        console.error('Error on call:media-toggle:', err.message);
+      }
+    });
+
+    /**
+     * User leaves the call without leaving the room or disconnecting editor
+     */
+    socket.on('call:leave', ({ roomId }) => {
+      try {
+        if (!socket.currentRoomId || socket.currentRoomId !== roomId) {
+          return;
+        }
+
+        const removed = roomManager.removeCallParticipant(roomId, socket.id);
+        if (removed) {
+          socket.to(roomId).emit('call:peer-left', {
+            peerId: socket.id,
+            userName: socket.user.name,
+          });
+        }
+      } catch (err) {
+        console.error('Error on call:leave:', err.message);
+      }
+    });
+
+    // ── 7. Room Leave ─────────────────────────────────────────
     socket.on('room:leave', ({ roomId }) => {
       if (socket.currentRoomId === roomId) {
+        const removedCallPeer = roomManager.removeCallParticipant(roomId, socket.id);
+        if (removedCallPeer) {
+          socket.to(roomId).emit('call:peer-left', {
+            peerId: socket.id,
+            userName: socket.user.name,
+          });
+        }
         socket.leave(roomId);
         const presence = roomManager.removeParticipant(roomId, socket.id);
         io.to(roomId).emit('room:presence', { participants: presence });
@@ -401,9 +545,16 @@ export function initSocketServer(io) {
       }
     });
 
-    // ── 6. Disconnect Handler ─────────────────────────────────
+    // ── 8. Disconnect Handler ─────────────────────────────────
     socket.on('disconnect', () => {
       if (socket.currentRoomId) {
+        const removedCallPeer = roomManager.removeCallParticipant(socket.currentRoomId, socket.id);
+        if (removedCallPeer) {
+          socket.to(socket.currentRoomId).emit('call:peer-left', {
+            peerId: socket.id,
+            userName: socket.user.name,
+          });
+        }
         const presence = roomManager.removeParticipant(socket.currentRoomId, socket.id);
         io.to(socket.currentRoomId).emit('room:presence', { participants: presence });
       }
